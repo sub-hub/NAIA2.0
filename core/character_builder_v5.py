@@ -44,8 +44,11 @@ MAX_COUNT = 4
 # 알파 채널이 있고, 투명한 화소(알파 128 미만 - `core/image_tone_inspector` 와 같은 잣대)가 이 비율 이상이어야 한다.
 # 전신 한 명이 서 있는 그림은 절반 가까이가 투명하다. 5% 는 "배경이 통째로 칠해졌다" 를 가르는 낮은 문턱이다.
 TRANSPARENT_MIN_SHARE = 0.05
+# `solo` 는 한 장에 같은 캐릭터가 여럿(캐릭터 시트처럼) 나오는 것을 막는다. `1girl` 만으로는 막지 못했고
+# (실측 2026-11-22: 후보 8장 중 4장이 같은 인물 2~3명), v5-medium 은 네거티브를 받지 않아 그쪽으로는 못 막는다.
+# 캐릭터 프롬프트가 아니라 여기 둬야 저장된 캐릭터를 다른 캐릭터와 함께 쓸 때 `solo` 가 따라가지 않는다.
 PROMPT_TEMPLATE = (
-    "{count}, -1::artist collaboration ::, {pose}, year 2024, masterpiece, very aesthetic, "
+    "{count}, solo, -1::artist collaboration ::, {pose}, year 2024, masterpiece, very aesthetic, "
     "high complexity, -0.25::low complexity, detailed background, sepia, muted color ::, "
     "0.15::ultra complexity ::, no text, transparent background"
 )
