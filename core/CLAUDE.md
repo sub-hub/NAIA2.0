@@ -23,6 +23,7 @@ core/prompt_generation_service.py
 
 **상세 레퍼런스**:
 - [Character Prompt / Character Reference 계약](.claude/NAI_CHARACTER_CLAUDE.md) — 캐릭터 프롬프트·레퍼런스를 다른 모듈에서 쓰는 법과 **우회 3종**
+- [Image save formats and generation metadata](.claude/IMAGE_SAVE_METADATA_CLAUDE.md) — 저장 경로 4갈래, PNG/WebP/AVIF 가 남기는 메타, stealth, 그림을 읽는 코드가 `restore_png_text` 를 불러야 하는 이유
 
 ---
 
