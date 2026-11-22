@@ -335,6 +335,7 @@ class HeadlessGenerationService:
                 # Direct requests record freshly evaluated negative-only operations.
                 self._apply_conditional_negative(params, prompt_run_id)
             self._capture_linked_artist(params, prompt_run_id)
+            self._capture_prompt_body(params, prompt_run_id)
         priority = self._priority(command)
         self._capture_queued_characters(params, api_mode, shared_capture, share_roll=share_roll)
         try:
@@ -1174,6 +1175,30 @@ class HeadlessGenerationService:
         if artist.replace("\\", "").casefold() not in prompt:
             return
         params["_linked_artist"] = {"artist": artist, "weight": linked.get("weight")}
+
+    def _capture_prompt_body(self, params: dict[str, Any], prompt_run_id: str) -> None:
+        """Copy the random prompt's main tags (without P.Eng prefix and suffix) onto the request.
+
+        The image lock dialog reads them to offer an image's own tags. Only the same prompt run
+        counts, like ``_capture_linked_artist``; replays drop the copied value of another image.
+        """
+        params.pop("_prompt_body_tags", None)
+        params.pop("_prompt_source_names", None)
+        if not prompt_run_id:
+            return
+        ctx = getattr(self.context, "current_prompt_context", None)
+        meta = getattr(ctx, "metadata", None) if ctx is not None else None
+        if not isinstance(meta, dict) or str(meta.get("prompt_run_id") or "") != str(prompt_run_id):
+            return
+        body = meta.get("prompt_body_tags")
+        if isinstance(body, list) and body:
+            params["_prompt_body_tags"] = [str(tag) for tag in body]
+        names = meta.get("prompt_source_names")
+        if isinstance(names, dict):
+            params["_prompt_source_names"] = {
+                "character": str(names.get("character") or ""),
+                "copyright": str(names.get("copyright") or ""),
+            }
 
     def _prompt_run_id_for_command(self, command: dict[str, Any], params: dict[str, Any]) -> str:
         explicit = (

@@ -1424,8 +1424,10 @@ class APIService:
                     ucs = list(selected["uc"])
                     character_ids = list(selected["character_ids"])
                     character_positions = list(selected["character_positions"])
-                elif params.get('_inpaint_session_characters') or params.get('sketchbook_character_prompts'):
+                elif (params.get('_inpaint_session_characters') or params.get('sketchbook_character_prompts')
+                      or params.get('_image_lock_no_characters')):
                     # An inpaint session owns even an absent/empty list: no main fallback.
+                    # The image lock with a rolling look sends no characters on purpose (core.image_lock).
                     # 1) Sketchbook / Img2ImgWindow 오버라이드
                     #
                     # ⚠️ **좌표를 함께 읽는다.** 예전엔 여기서 위치를 통째로 버려

@@ -639,9 +639,9 @@ class HeadlessRandomPromptService:
                 return None
             from core.event_compress import check_event_compress
             check_event_compress(self.context)
-            from core import appearance_lock
+            from core import image_lock
 
-            return appearance_lock.pop_random_row(self.context, sr, self._normalize_ratings(active_ratings))
+            return image_lock.pop_random_row(self.context, sr, self._normalize_ratings(active_ratings))
         except Exception:
             return None
 

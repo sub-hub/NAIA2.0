@@ -3595,12 +3595,5 @@ export function createCharacterQuickPanel({
     openPoolWindow: () => openPoolWindow(),
   };
 
-  /** Expand or collapse the panel (used by the appearance lock badge). */
-  function setOpen(value) {
-    if (open === !!value) return;
-    open = !!value;
-    render(lastState, true);
-  }
-
-  return {render, setVisible, isOpen: () => open, setOpen, noteRandom, noteCharacterResult, noteCharacterError, characterActions};
+  return {render, setVisible, isOpen: () => open, noteRandom, noteCharacterResult, noteCharacterError, characterActions};
 }

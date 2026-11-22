@@ -48,6 +48,13 @@ const SEARCH_COMPACT_CSS = `
 .sp-hist-del{flex:0 0 auto;border:none;background:transparent;color:var(--text-dimmer,#6c6c78);cursor:pointer;font-size:13px;line-height:1}
 .sp-hist-del:hover{color:#f0a0a0}
 .sp-hist-empty{font-size:10.5px;color:var(--text-dimmer,#6c6c78);padding:4px}
+.sp-preset-save-row{display:flex;gap:4px}
+.sp-preset-save-row .sp-preset-name{flex:1 1 auto;min-width:0}
+.sp-preset-save-row .sp-hist-btn{height:22px}
+.sp-preset-title{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--text-primary,#e8e8ee)}
+.sp-preset-now{font-size:9px;font-weight:600;padding:0 5px;border-radius:3px;background:rgba(90,158,111,0.25);color:var(--accent-green,#5a9e6f)}
+.sp-preset-item.is-current{box-shadow:inset 2px 0 0 var(--accent-green,#5a9e6f)}
+.sp-hist-del.is-confirm{font-size:10px;color:#f0a0a0}
 /* 기간 슬라이더 트랙: 원래 배경이 var(--bg-elevated) 인데 떠 있는 창의 배경도 같은 색이라
    트랙이 사라졌다(사용자 제보). 창 배경 위에서도 보이는 반투명 흰색으로. */
 .dr-track{background:rgba(255,255,255,0.13);box-shadow:inset 0 0 0 1px rgba(255,255,255,0.05)}
@@ -236,6 +243,11 @@ export function createSearchPanel({
   // [검색 기록] - 최근 검색 최대 500개(백엔드 core/search_history.py). 열 때만 받는다.
   let historyItems = [];
   let historyOpen = false;
+  // Search presets: named full search conditions (backend core/search_presets.py).
+  let presetItems = [];
+  let presetsOpen = false;
+  let presetConfirmDelete = null;   // preset name waiting for a second click on ×
+  let presetConfirmTimer = null;
 
   document.addEventListener('click', event => {
     if (!event.target.closest('.search-parquet-control')) closeParquetMenu();
@@ -801,6 +813,7 @@ export function createSearchPanel({
 
   function setHistoryOpen(open) {
     historyOpen = !!open;
+    if (historyOpen && presetsOpen) setPresetsOpen(false);
     const box = moduleBody.querySelector('.sp-history');
     if (box) box.hidden = !historyOpen;
     const button = moduleBody.querySelector('[data-sp="history"]');
@@ -870,6 +883,150 @@ export function createSearchPanel({
     moduleBody.querySelector('.mod-start')?.focus();
   }
 
+  // ---- Search presets ----------------------------------------------------------
+  function requestPresets() {
+    const ws = getWs();
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: 'get_search_presets' }));
+  }
+
+  function setPresetsOpen(open) {
+    presetsOpen = !!open;
+    if (presetsOpen && historyOpen) setHistoryOpen(false);
+    const box = moduleBody.querySelector('.sp-presets');
+    if (box) box.hidden = !presetsOpen;
+    const button = moduleBody.querySelector('[data-sp="presets"]');
+    if (button) {
+      button.classList.toggle('is-on', presetsOpen);
+      button.setAttribute('aria-pressed', presetsOpen ? 'true' : 'false');
+    }
+    if (presetsOpen) {
+      renderPresets();
+      requestPresets();
+      moduleBody.querySelector('.sp-preset-name')?.focus();
+    }
+  }
+
+  function fieldValue(id) {
+    return String((moduleBody.querySelector(`#${id}`) || {}).value || '').trim();
+  }
+
+  // The search condition currently in the panel fields, in preset shape. The permanent exclude
+  // is not part of a preset: it is one shared list for every search (the Event Map reads it too).
+  function currentCondition() {
+    const ratings = ['g', 's', 'q', 'e'].filter(key => {
+      const checkbox = moduleBody.querySelector(`#sr_${key}`);
+      return checkbox ? checkbox.checked : !!searchRatingState[key];
+    });
+    const condition = {
+      query: fieldValue('searchQuery'),
+      exclude: fieldValue('searchExclude'),
+      ratings,
+      bucket_start: bucketState.loaded ? bucketState.start : null,
+      bucket_end: bucketState.loaded ? bucketState.end : null,
+    };
+    condition.period = bucketState.loaded ? `${ymStart(condition.bucket_start)} - ${ymEnd(condition.bucket_end)}` : '';
+    return condition;
+  }
+
+  function sameCondition(preset, current) {
+    const bucketsKnown = preset.bucket_start !== null && preset.bucket_end !== null;
+    return preset.query === current.query
+      && preset.exclude === current.exclude
+      && preset.ratings.join('') === current.ratings.join('')
+      && (!bucketsKnown || (preset.bucket_start === current.bucket_start && preset.bucket_end === current.bucket_end));
+  }
+
+  function renderPresets() {
+    const list = moduleBody.querySelector('.sp-preset-list');
+    if (!list) return;
+    if (!presetItems.length) {
+      list.innerHTML = '<div class="sp-hist-empty">저장한 프리셋이 없습니다. 위에 이름을 적고 [현재 조건 저장]을 누르세요</div>';
+      return;
+    }
+    const current = currentCondition();
+    list.innerHTML = presetItems.map((item, index) => {
+      const ratings = item.ratings.length < 4 ? item.ratings.join('/').toUpperCase() : '모든 등급';
+      const meta = [ratings, item.period || ''].filter(Boolean).join(', ');
+      const isCurrent = sameCondition(item, current);
+      const confirming = presetConfirmDelete === item.name;
+      return `<div class="sp-hist-item sp-preset-item${isCurrent ? ' is-current' : ''}" data-sp-preset="${index}"
+          title="눌러서 검색어, 제외어, 등급, 기간을 이 조건으로 채우기">
+        <div class="sp-hist-text">
+          <div class="sp-preset-title">${escHtml(item.name)}${isCurrent ? '<span class="sp-preset-now">지금 조건</span>' : ''}</div>
+          <div class="sp-hist-q">${escHtml(item.query || '(전체)')}</div>
+          ${item.exclude ? `<div class="sp-hist-x">− ${escHtml(item.exclude)}</div>` : ''}
+          <div class="sp-hist-meta">${escHtml(meta)}</div>
+        </div>
+        <button type="button" class="sp-hist-del${confirming ? ' is-confirm' : ''}" data-sp-preset-del="${index}"
+          title="${confirming ? '한 번 더 누르면 지웁니다' : '프리셋 지우기'}">${confirming ? '지우기' : '×'}</button>
+      </div>`;
+    }).join('');
+  }
+
+  function onSearchPresets(message) {
+    presetItems = Array.isArray(message.items) ? message.items : [];
+    if (presetsOpen) renderPresets();
+  }
+
+  function savePreset() {
+    const ws = getWs();
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const input = moduleBody.querySelector('.sp-preset-name');
+    const name = String(input?.value || '').trim();
+    if (!name) {
+      input?.focus();
+      return;
+    }
+    const exists = presetItems.some(item => item.name.toLowerCase() === name.toLowerCase());
+    ws.send(JSON.stringify({ type: 'save_search_preset', preset: { name, ...currentCondition() } }));
+    if (input) input.value = '';
+    showToast(exists ? `프리셋 "${name}" 을 지금 조건으로 덮어썼습니다.` : `프리셋 "${name}" 을 저장했습니다.`, 'success');
+  }
+
+  function deletePreset(item) {
+    if (presetConfirmDelete !== item.name) {
+      presetConfirmDelete = item.name;
+      clearTimeout(presetConfirmTimer);
+      presetConfirmTimer = setTimeout(() => { presetConfirmDelete = null; renderPresets(); }, 3000);
+      renderPresets();
+      return;
+    }
+    presetConfirmDelete = null;
+    const ws = getWs();
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'delete_search_preset', name: item.name }));
+    }
+  }
+
+  // Fill the search fields from the preset. The shared permanent exclude stays as it is;
+  // searching stays the user's click.
+  function usePreset(item) {
+    const set = (id, value) => {
+      const element = moduleBody.querySelector(`#${id}`);
+      if (element) element.value = value || '';
+    };
+    set('searchQuery', item.query);
+    set('searchExclude', item.exclude);
+    for (const key of ['g', 's', 'q', 'e']) {
+      searchRatingState[key] = item.ratings.includes(key);
+      const checkbox = moduleBody.querySelector(`#sr_${key}`);
+      if (checkbox) checkbox.checked = searchRatingState[key];
+    }
+    if (bucketState.loaded && item.bucket_start !== null && item.bucket_end !== null) {
+      const last = Math.max(0, bucketState.count - 1);
+      bucketState.start = Math.min(item.bucket_start, last);
+      bucketState.end = Math.min(item.bucket_end, last);
+      renderDateRange();
+      persistBucketRange();
+    }
+    growKeywordFields();
+    saveFilterState({ search_ratings: item.ratings });
+    setPresetsOpen(false);
+    showToast(`프리셋 "${item.name}" 조건을 채웠습니다. 영구 제외는 검색창 것을 그대로 씁니다. [검색]을 누르면 찾습니다.`, 'success');
+    moduleBody.querySelector('.mod-start')?.focus();
+  }
+
   function bindParquetLibrary() {
     // 검색 층과 동반 창(카드 그리드) 두 곳에 같은 위임 처리기를 건다.
     for (const root of [moduleBody, libHost]) bindLibraryRoot(root);
@@ -882,6 +1039,20 @@ export function createSearchPanel({
     root.addEventListener('click', event => {
       if (event.target.closest('[data-sp="parquets"]')) { toggleLibrary(); return; }
       if (event.target.closest('[data-sp="history"]')) { setHistoryOpen(!historyOpen); return; }
+      if (event.target.closest('[data-sp="presets"]')) { setPresetsOpen(!presetsOpen); return; }
+      if (event.target.closest('[data-sp-preset-save]')) { savePreset(); return; }
+      const presetDel = event.target.closest('[data-sp-preset-del]');
+      if (presetDel) {
+        const item = presetItems[Number(presetDel.dataset.spPresetDel)];
+        if (item) deletePreset(item);
+        return;
+      }
+      const preset = event.target.closest('[data-sp-preset]');
+      if (preset) {
+        const item = presetItems[Number(preset.dataset.spPreset)];
+        if (item) usePreset(item);
+        return;
+      }
       if (event.target.closest('[data-sp="perm"]')) { setPermOpen(!permOpen, { focus: true }); return; }
       if (event.target.closest('[data-sp="legacy"]')) { setLegacyMenuOpen(!legacyMenuOpen()); return; }
       const legacyPick = event.target.closest('[data-sp-legacy]');
@@ -967,6 +1138,12 @@ export function createSearchPanel({
           pqlRenaming = null;
           rerenderLibrary();
         }
+        return;
+      }
+      const presetName = event.target.closest && event.target.closest('.sp-preset-name');
+      if (presetName) {
+        if (event.key === 'Enter') { event.preventDefault(); savePreset(); }
+        else if (event.key === 'Escape') setPresetsOpen(false);
         return;
       }
       const histFilter = event.target.closest && event.target.closest('.sp-hist-filter');
@@ -1308,6 +1485,8 @@ export function createSearchPanel({
     </div>
     ${dateRangeSliderHtml()}
     <div class="sp-search-row">
+      <button type="button" class="sp-hist-btn" data-sp="presets" aria-pressed="false"
+        data-naia-guide="프리셋 — 검색어, 제외어, 등급, 기간을 한 이름으로 저장합니다. 고르면 그 칸들이 채워지고, [검색]을 눌러야 찾습니다. 같은 이름으로 저장하면 덮어씁니다.\\n\\n영구 제외는 프리셋에 담지 않습니다. 어느 프리셋으로 찾든(고정 기능의 풀도) 늘 검색창의 영구 제외가 함께 걸립니다. 한 프리셋에서만 뺄 태그는 그 프리셋의 제외어에 넣으세요.">프리셋</button>
       <button type="button" class="sp-hist-btn" data-sp="history" aria-pressed="false"
         data-naia-guide="검색 기록 — 실행했던 검색(검색어·제외어)을 최근 순으로 최대 500개 기억합니다. 눌러서 칸에 채운 뒤 [검색] 하세요.">검색 기록</button>
       <button class="mod-action-btn mod-start" onclick="doSearch()" ${searchingActive ? 'disabled' : ''}>검색</button>
@@ -1315,6 +1494,13 @@ export function createSearchPanel({
     <div class="sp-history" hidden>
       <input type="text" class="sp-hist-filter" placeholder="검색어·제외어에서 찾기" spellcheck="false">
       <div class="sp-hist-list"></div>
+    </div>
+    <div class="sp-history sp-presets" hidden>
+      <div class="sp-preset-save-row">
+        <input type="text" class="sp-hist-filter sp-preset-name" placeholder="프리셋 이름 (같은 이름이면 덮어씀)" spellcheck="false" maxlength="60">
+        <button type="button" class="sp-hist-btn" data-sp-preset-save>현재 조건 저장</button>
+      </div>
+      <div class="sp-hist-list sp-preset-list"></div>
     </div>
     <span class="search-progress"></span>
     <div class="sp-ac-host"></div>
@@ -1331,6 +1517,7 @@ export function createSearchPanel({
     updateLibraryCount();
     syncLibraryButton(isLibraryOpen());
     historyOpen = false;
+    presetsOpen = false;
     bindDateRangeDrag();
     bindTagIncrementButton();
     renderDateRange();
@@ -1820,6 +2007,7 @@ export function createSearchPanel({
       renderHistory(); renderDateRange(); syncRatingButtons();
     },
     getHistorySnapshot: () => JSON.parse(JSON.stringify(historyItems)),
+    onSearchPresets,
     setSharedPermanentExclude: value => {
       const input = moduleBody.querySelector('#searchExcludePermanent');
       if (input) input.value = String(value || '');

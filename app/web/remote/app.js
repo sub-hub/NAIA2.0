@@ -650,63 +650,72 @@ function insetVirtualCharacterState(inset) {
   };
 }
 
-// ── Appearance lock virtual character ────────────────────────────────────────
+// ── Image lock ───────────────────────────────────────────────────────────────
 //
-// Result context menu > "이 외형으로 고정". While locked, generation sends the locked look as the only
-// character instead of the main C1 (a bypass, like the reference inset). The character module is not
-// modified, so unlocking sends the real C1 again. The quick panel renders the lock as a virtual
-// character and routes its edits to the lock; a badge on the result viewer shows the lock and clears it.
-// Precedence: inpaint session > reference inset > appearance lock. When an earlier one is active the
+// Result context menu > "이 그림으로 고정". Per tag category the lock keeps the image's tags, rolls
+// them from random rows, or leaves them out (core.image_lock). While the look is kept it is sent as
+// the only character instead of the main C1 (a bypass, like the reference inset); while the look
+// rolls no character prompt is sent. The character module is not modified, so unlocking sends the
+// real C1 again. The quick panel renders the locked C1 as a virtual character and routes its edits
+// to the lock; a badge on the result viewer shows the lock, switches SFW/NSFW and clears it.
+// Precedence: inpaint session > reference inset > image lock. When an earlier one is active the
 // lock is paused (the server does not apply it either) and the badge says so.
-let appearanceLockState = null;               // last state from the server (core.appearance_lock.public_state)
-let appearanceLockSync = {session: '', seq: -1};
-let appearanceLockDialog = null;
-let appearanceLockEditChain = Promise.resolve();
-const appearanceLockQueuedEdits = new Map();  // quick panel edits not sent yet: 'prompt' | 'uc' -> latest text
+let imageLockState = null;                    // last state from the server (image_lock_routes._state_with_pool)
+let imageLockSync = {session: '', seq: -1};
+let imageLockDialog = null;
+let imageLockEditChain = Promise.resolve();
+const imageLockQueuedEdits = new Map();       // quick panel edits not sent yet: 'prompt' | 'uc' -> latest text
+const IMAGE_LOCK_CATEGORY_LABELS = {
+  names: '이름', copyright: '작품명', features: '외형', clothes: '의상', expression: '표정',
+  pose: '포즈', composition: '구도', location: '배경', object: '사물', other: '기타',
+};
 
-function appearanceLockActive() {
-  return appearanceLockState && appearanceLockState.active ? appearanceLockState : null;
+function imageLockActive() {
+  return imageLockState && imageLockState.active ? imageLockState : null;
 }
 
 /** The lock that applies to generation now; null while an inpaint session or the inset owns the characters. */
-function appearanceLockVirtualCharacters() {
+function imageLockVirtualCharacters() {
   if (virtualCharacterSession() || insetVirtualCharacters()) return null;
-  return appearanceLockActive();
+  return imageLockActive();
 }
 
-function appearanceLockVirtualCharacterState(lock) {
+function imageLockVirtualCharacterState(lock) {
+  const characters = lock.c1_mode
+    ? [{prompt: String(lock.prompt || ''), uc: String(lock.uc || ''), active: true, muted: false, position: null}]
+    : [];
   return {
     type: 'module_state',
     module_id: 'character',
     virtual: true,
-    virtual_label: '외형 고정',
+    virtual_label: lock.c1_mode ? '고정' : '고정 (캐릭터 바뀜)',
     activated: true,
     position_mode: 'auto',
-    characters: [{prompt: String(lock.prompt || ''), uc: String(lock.uc || ''), active: true, muted: false, position: null}],
+    characters,
   };
 }
 
 /** Accept a lock state from the server. Older states from the same server process are dropped. */
-function setAppearanceLockState(state) {
+function setImageLockState(state) {
   if (!state || typeof state !== 'object') return;
   const session = String(state.sync_session || '');
   const seq = Number(state.seq);
-  if (Number.isFinite(seq) && session === appearanceLockSync.session && seq < appearanceLockSync.seq) return;
-  appearanceLockSync = {session, seq: Number.isFinite(seq) ? seq : -1};
-  appearanceLockState = state;
-  renderAppearanceLockBadge();
+  if (Number.isFinite(seq) && session === imageLockSync.session && seq < imageLockSync.seq) return;
+  imageLockSync = {session, seq: Number.isFinite(seq) ? seq : -1};
+  imageLockState = state;
+  renderImageLockBadge();
   try { renderCharacterQuickPanel(); } catch (_) { /* quick panel not mounted yet */ }
 }
 
-function refreshAppearanceLockState() {
-  return fetch('/api/appearance-lock/state')
+function refreshImageLockState() {
+  return fetch('/api/image-lock/state')
     .then(response => (response.ok ? response.json() : null))
-    .then(state => { if (state) setAppearanceLockState(state); })
+    .then(state => { if (state) setImageLockState(state); })
     .catch(() => {});
 }
 
-async function postAppearanceLock(path, body) {
-  const response = await fetch(`/api/appearance-lock/${path}`, {
+async function postImageLock(path, body) {
+  const response = await fetch(`/api/image-lock/${path}`, {
     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {}),
   });
   const data = await response.json().catch(() => null);
@@ -714,123 +723,198 @@ async function postAppearanceLock(path, body) {
   return data;
 }
 
+/** Tell the user when the lock pool could not be searched or its preset is gone. */
+function reportImageLockPool(state) {
+  const pool = state?.pool_result;
+  if (!pool) return;
+  if (pool.error) showToast(`고정용 풀을 만들지 못해 메인 풀에서 뽑습니다: ${pool.error}`, 'warning');
+  else if (pool.missing) showToast(`프리셋 "${pool.preset}" 이 없어 메인 풀에서 뽑습니다`, 'warning');
+  else if (pool.built && !pool.remaining) showToast(`프리셋 "${pool.preset}" 으로 찾은 줄이 없습니다`, 'warning');
+}
+
 /** Quick panel edit. Edits go out one at a time in order, like the inset's virtual characters;
  *  keystrokes typed while a request is in flight collapse into the next request. Unlike a
  *  debounce, the latest text is never held back on purpose (a Generate pressed while a request
  *  is still in flight can race it, as with the inset). */
-function appearanceLockEdit(field, value) {
+function imageLockEdit(field, value) {
   const key = field.startsWith('char_uc_') ? 'uc' : 'prompt';
-  const alreadyQueued = appearanceLockQueuedEdits.has(key);
-  appearanceLockQueuedEdits.set(key, String(value ?? ''));
-  if (alreadyQueued) return appearanceLockEditChain;
-  appearanceLockEditChain = appearanceLockEditChain.then(async () => {
-    const text = appearanceLockQueuedEdits.get(key);
-    appearanceLockQueuedEdits.delete(key);
+  const alreadyQueued = imageLockQueuedEdits.has(key);
+  imageLockQueuedEdits.set(key, String(value ?? ''));
+  if (alreadyQueued) return imageLockEditChain;
+  imageLockEditChain = imageLockEditChain.then(async () => {
+    const text = imageLockQueuedEdits.get(key);
+    imageLockQueuedEdits.delete(key);
     try {
-      setAppearanceLockState(await postAppearanceLock('update', {[key]: text}));
+      setImageLockState(await postImageLock('update', {[key]: text}));
     } catch (error) {
-      showToast(`외형 고정을 고치지 못했습니다: ${error.message}`, 'error');
-      refreshAppearanceLockState();
+      showToast(`고정을 고치지 못했습니다: ${error.message}`, 'error');
+      refreshImageLockState();
     }
   });
-  return appearanceLockEditChain;
+  return imageLockEditChain;
 }
 
-async function clearAppearanceLock() {
+async function clearImageLock() {
   try {
-    setAppearanceLockState(await postAppearanceLock('clear'));
-    showToast('외형 고정을 풀었습니다. 원래 C1 이 다시 나갑니다', 'success');
+    setImageLockState(await postImageLock('clear'));
+    showToast('고정을 풀었습니다. 원래 C1 이 다시 나갑니다', 'success');
   } catch (error) {
-    showToast(`외형 고정을 풀지 못했습니다: ${error.message}`, 'error');
-    refreshAppearanceLockState();
+    showToast(`고정을 풀지 못했습니다: ${error.message}`, 'error');
+    refreshImageLockState();
   }
 }
 
-/** Context menu entry. The server splits the in-memory random row, or the metadata prompt when the row is gone. */
-async function openAppearanceLockFromContext(context = {}) {
+async function ensureImageLockDialog() {
+  if (!imageLockDialog) {
+    const {createImageLockDialog} = await import('./js/features/imageLockDialog.mjs?v=20261122-ilock9');
+    imageLockDialog = createImageLockDialog({document, escHtml});
+  }
+  return imageLockDialog;
+}
+
+/** Send the dialog's choice: prefs first (they pick the pool), then the lock itself. */
+async function applyImageLockChoice(choice, {editing, sourceLabel = ''}) {
+  if (choice.clear) return clearImageLock();
+  try {
+    await postImageLock('prefs', choice.prefs || {});
+    const body = {
+      kept: choice.kept, modes: choice.modes, partner: choice.partner, nsfw: choice.nsfw,
+      sfw_clothes_mode: choice.sfw_clothes_mode,
+    };
+    const state = editing
+      ? await postImageLock('update', body)
+      : await postImageLock('set', {...body, groups: choice.groups, source_label: sourceLabel});
+    setImageLockState(state);
+    reportImageLockPool(state);
+    showToast(editing ? '고정을 바꿨습니다' : '고정했습니다. 랜덤으로 둔 칸만 바뀝니다', 'success');
+  } catch (error) {
+    showToast(`${editing ? '고정을 바꾸지' : '고정하지'} 못했습니다: ${error.message}`, 'error');
+  }
+  return undefined;
+}
+
+/** Context menu entry. The server reads the request's prompt body, the in-memory row, or the metadata prompt. */
+async function openImageLockFromContext(context = {}) {
   let saved = {prompt: '', characters: []};
   try {
     saved = await callResultImageAction('readCharacterSourceFromContext', context) || saved;
-  } catch (_error) { /* the random row may still be available; the server reports if nothing is */ }
+  } catch (_error) { /* the request may still hold the tags; the server reports if nothing is there */ }
   let data;
+  let dialog;
   try {
-    data = await postAppearanceLock('candidates', {
+    data = await postImageLock('candidates', {
       path: context.path || '', prompt: saved.prompt || '', characters: saved.characters || [], label: context.label || '',
     });
+    dialog = await ensureImageLockDialog();
   } catch (error) {
-    showToast(`외형을 고르지 못했습니다: ${error.message}`, 'error');
+    showToast(`고정 창을 열지 못했습니다: ${error.message}`, 'error');
     return;
   }
-  try {
-    if (!appearanceLockDialog) {
-      const {createAppearanceLockDialog} = await import('./js/features/appearanceLockDialog.mjs?v=20261122-alock4');
-      appearanceLockDialog = createAppearanceLockDialog({document, escHtml});
-    }
-  } catch (error) {
-    showToast(`외형 고정 창을 열지 못했습니다: ${error.message}`, 'error');
-    return;
-  }
-  const choice = await appearanceLockDialog.open({
+  const choice = await dialog.open({
     groups: data.groups || {}, sourceLabel: data.source_label || '', source: data.source || '',
+    presets: data.presets || {}, prefs: data.prefs || {}, searchPresets: data.search_presets || [],
+    presetsBlockingPartner: data.search_presets_blocking_partner || [],
   });
   if (!choice) return;
+  await applyImageLockChoice({...choice, groups: data.groups || {}}, {editing: false, sourceLabel: data.source_label || ''});
+}
+
+/** Badge name: reopen the dialog on the active lock. */
+async function openImageLockEditor() {
+  const lock = imageLockActive();
+  if (!lock) return;
+  let dialog;
   try {
-    setAppearanceLockState(await postAppearanceLock('set', {...choice, source_label: data.source_label || ''}));
-    showToast('외형을 고정했습니다. Random 으로 포즈와 배경을 굴리세요', 'success');
+    dialog = await ensureImageLockDialog();
   } catch (error) {
-    showToast(`외형을 고정하지 못했습니다: ${error.message}`, 'error');
+    showToast(`고정 창을 열지 못했습니다: ${error.message}`, 'error');
+    return;
+  }
+  const choice = await dialog.open({
+    groups: lock.groups || {}, sourceLabel: lock.source_label || '', presets: lock.presets || {},
+    prefs: lock.prefs || {}, searchPresets: lock.search_presets || [],
+    presetsBlockingPartner: lock.search_presets_blocking_partner || [], lock,
+  });
+  if (choice) await applyImageLockChoice(choice, {editing: true});
+}
+
+async function toggleImageLockNsfw() {
+  const lock = imageLockActive();
+  if (!lock) return;
+  try {
+    const state = await postImageLock('update', {nsfw: !lock.nsfw});
+    setImageLockState(state);
+    reportImageLockPool(state);
+  } catch (error) {
+    showToast(`SFW, NSFW 를 바꾸지 못했습니다: ${error.message}`, 'error');
   }
 }
 
-/** Result viewer badge below the inset badge: always visible while locked, x unlocks, dashed while paused. */
-function renderAppearanceLockBadge() {
+function imageLockSummary(lock) {
+  const modes = lock.modes || {};
+  const pick = mode => Object.keys(IMAGE_LOCK_CATEGORY_LABELS)
+    .filter(key => modes[key] === mode).map(key => IMAGE_LOCK_CATEGORY_LABELS[key]);
+  return {kept: pick('keep'), rolling: pick('random')};
+}
+
+/** Result viewer badge below the inset badge: always visible while locked, dashed while paused. */
+function renderImageLockBadge() {
   const viewer = document.getElementById('resultViewer');
   if (!viewer) return;
-  let badge = document.getElementById('appearanceLockBadge');
-  const lock = appearanceLockActive();
+  let badge = document.getElementById('imageLockBadge');
+  const lock = imageLockActive();
   if (!lock) {
     badge?.remove();
     return;
   }
   if (!badge) {
     badge = document.createElement('div');
-    badge.id = 'appearanceLockBadge';
-    badge.className = 'reference-inset-badge appearance-lock-badge';
+    badge.id = 'imageLockBadge';
+    badge.className = 'reference-inset-badge image-lock-badge';
     viewer.appendChild(badge);
   }
-  const paused = !appearanceLockVirtualCharacters();
+  const paused = !imageLockVirtualCharacters();
   const pausedBy = virtualCharacterSession() ? '인페인트 세션' : '레퍼런스 인셋';
-  const removed = `캐릭터 이름, 작품명, 외형${lock.include_clothes ? ', 의상' : ''}`;
+  const {kept, rolling} = imageLockSummary(lock);
+  const pool = lock.pool_preset ? `프리셋 "${lock.pool_preset}"` : '지금 메인 풀';
   const origin = lock.source_label ? `\n고정한 그림: ${lock.source_label}` : '';
   const detail = paused
-    ? `외형 고정이 멈춰 있습니다. ${pausedBy}이 캐릭터를 쓰는 동안은 그쪽이 먼저입니다.${origin}`
-    : `C1 대신 보내는 외형: ${lock.prompt}\n랜덤 줄: solo 만 뽑고 ${removed}을(를) 걷습니다.\n캐릭터 모듈의 C1 은 그대로입니다. x 로 풀면 다시 나갑니다.${origin}`;
+    ? `고정이 멈춰 있습니다. ${pausedBy}이 캐릭터를 쓰는 동안은 그쪽이 먼저입니다.${origin}`
+    : [
+      `원본: ${kept.join(', ') || '없음'}`,
+      `랜덤: ${rolling.join(', ') || '없음'}`,
+      lock.c1_mode ? `C1 대신 보내는 외형: ${lock.prompt}` : '외형이 랜덤이라 C1 은 보내지 않습니다',
+      `줄을 뽑는 곳: ${pool}, ${lock.row_rule || ''}`,
+      '이름을 누르면 고정을 바꿉니다. x 로 풀면 원래 C1 이 다시 나갑니다.',
+    ].join('\n') + origin;
   // Called on every quick panel render; skip rebuilding unchanged markup so an open tooltip survives.
-  const signature = JSON.stringify([paused, pausedBy, lock.prompt, !!lock.include_clothes, lock.source_label || '']);
+  const signature = JSON.stringify([paused, pausedBy, detail, !!lock.nsfw]);
   if (badge.dataset.signature === signature) {
-    positionAppearanceLockBadge();
+    positionImageLockBadge();
     return;
   }
   badge.dataset.signature = signature;
   badge.classList.toggle('is-paused', paused);
   badge.innerHTML = `
-    <button type="button" class="reference-inset-badge-open appearance-lock-badge-open" data-naia-title="${escHtml(detail)}"
+    <button type="button" class="reference-inset-badge-open image-lock-badge-open" data-naia-title="${escHtml(detail)}"
             ><span class="reference-inset-badge-mark" aria-hidden="true"></span><span
-            class="reference-inset-badge-name">외형 고정${paused ? ' (멈춤)' : ''}</span></button>
-    ${lock.include_clothes ? '<span class="appearance-lock-badge-tag">의상 포함</span>' : ''}
-    <span class="appearance-lock-badge-tag">solo</span>
-    <button type="button" class="reference-inset-badge-x" aria-label="외형 고정 풀기"
-            data-naia-title="외형 고정을 풉니다. 원래 C1 이 다시 나갑니다">&times;</button>`;
-  // The name opens the quick panel, where the locked look can be read and edited.
-  badge.querySelector('.appearance-lock-badge-open').onclick = () => characterQuickPanel?.setOpen?.(true);
-  badge.querySelector('.reference-inset-badge-x').onclick = () => clearAppearanceLock();
+            class="reference-inset-badge-name">고정${paused ? ' (멈춤)' : ''}</span></button>
+    <span class="image-lock-badge-tag" title="원본으로 두는 칸">${escHtml(kept.slice(0, 3).join(', ') + (kept.length > 3 ? ' 외' : ''))}</span>
+    <button type="button" class="image-lock-badge-tag image-lock-badge-rating${lock.nsfw ? ' is-nsfw' : ''}"
+            data-naia-title="눌러서 ${lock.nsfw ? 'SFW' : 'NSFW'} 로 바꿉니다. 줄을 뽑는 풀과 의상 칸이 같이 바뀝니다"
+            >${lock.nsfw ? 'NSFW' : 'SFW'}</button>
+    <button type="button" class="reference-inset-badge-x" aria-label="고정 풀기"
+            data-naia-title="고정을 풉니다. 원래 C1 이 다시 나갑니다">&times;</button>`;
+  badge.querySelector('.image-lock-badge-open').onclick = () => openImageLockEditor();
+  badge.querySelector('.image-lock-badge-rating').onclick = () => toggleImageLockNsfw();
+  badge.querySelector('.reference-inset-badge-x').onclick = () => clearImageLock();
   watchQuickPanelForInsetBadge();
-  positionAppearanceLockBadge();
+  positionImageLockBadge();
 }
 
 /** Place the badge below the inset badge, or where the inset badge would sit (below the pill or quick panel). */
-function positionAppearanceLockBadge() {
-  const badge = document.getElementById('appearanceLockBadge');
+function positionImageLockBadge() {
+  const badge = document.getElementById('imageLockBadge');
   const viewer = document.getElementById('resultViewer');
   if (!badge || !viewer) return;
   const inset = document.getElementById('referenceInsetBadge');
@@ -861,7 +945,7 @@ function positionAppearanceLockBadge() {
   badge.style.left = `${Math.round(above.left - viewerBox.left)}px`;
 }
 
-refreshAppearanceLockState();
+refreshImageLockState();
 
 /** 퀵 패널이 보낸 가상 캐릭터 편집을 인셋으로 보낸다. 답(인셋 상태)이 띠 · 창 · 패널을 함께 맞춘다.
  *
@@ -1014,14 +1098,14 @@ function renderCharacterQuickPanel() {
   if (!characterQuickPanel) return;
   const session = virtualCharacterSession();
   const inset = session ? null : insetVirtualCharacters();
-  const lock = session || inset ? null : appearanceLockVirtualCharacters();
+  const lock = session || inset ? null : imageLockVirtualCharacters();
   characterQuickPanel.render(session
     ? virtualCharacterState(session)
     : inset ? insetVirtualCharacterState(inset)
-      : lock ? appearanceLockVirtualCharacterState(lock)
+      : lock ? imageLockVirtualCharacterState(lock)
         : (moduleStateCache.get('character') || {module_id: 'character', characters: []}));
   // Inset or inpaint session changes also pause or resume the lock, so refresh its badge here.
-  renderAppearanceLockBadge();
+  renderImageLockBadge();
 }
 
 /** 퀵 패널이 `character` 로 쓰려는 것을 인페인트 세션으로 돌린다. */
@@ -1039,11 +1123,11 @@ function virtualSetModuleParam(moduleId, key, value, options) {
     showToast('인셋의 가상 캐릭터에는 없는 기능입니다', 'error');
     return undefined;
   }
-  if (moduleId === 'character' && !session && appearanceLockVirtualCharacters()) {
+  if (moduleId === 'character' && !session && imageLockVirtualCharacters()) {
     // Only the C1 prompt and UC are editable; slot count and toggles would contradict the lock.
-    if (key === 'char_prompt_0' || key === 'char_uc_0') return appearanceLockEdit(key, value);
+    if (key === 'char_prompt_0' || key === 'char_uc_0') return imageLockEdit(key, value);
     if (key === 'position_mode' && String(value) === 'auto') return undefined;
-    showToast('외형 고정 중에는 고정한 외형 하나만 보냅니다. 바꾸려면 외형 고정을 풀어 주세요', 'info');
+    showToast('고정 중에는 고정한 외형 하나만 보냅니다. 바꾸려면 배지의 [고정]을 눌러 주세요', 'info');
     return undefined;
   }
   // `options.slotUuid` 도 넘긴다 - 퀵 패널의 Find 가 보관함 줄을 올릴 때 그 캐릭터의 uuid 를 싣는다(번호는 낡을 수 있다).
@@ -1098,8 +1182,8 @@ function virtualModTextEdit(moduleId, field, value, slotUuid) {
       && /^(char_prompt_|char_uc_)\d+$/.test(String(field))) {
     return insetCharacterParam(String(field), value);
   }
-  if (moduleId === 'character' && !session && appearanceLockVirtualCharacters()) {
-    if (String(field) === 'char_prompt_0' || String(field) === 'char_uc_0') return appearanceLockEdit(String(field), value);
+  if (moduleId === 'character' && !session && imageLockVirtualCharacters()) {
+    if (String(field) === 'char_prompt_0' || String(field) === 'char_uc_0') return imageLockEdit(String(field), value);
     return undefined;
   }
   if (moduleId !== 'character' || !session) return onModTextEdit(moduleId, field, value, undefined, slotUuid);
@@ -1695,7 +1779,7 @@ function renderReferenceInsetBadge() {
 function positionReferenceInsetBadge() {
   const badge = document.getElementById('referenceInsetBadge');
   if (!badge) {
-    positionAppearanceLockBadge();   // the lock badge shares this observer
+    positionImageLockBadge();   // the lock badge shares this observer
     return;
   }
   const viewer = document.getElementById('resultViewer');
@@ -1710,7 +1794,7 @@ function positionReferenceInsetBadge() {
     badge.style.top = '';
     badge.style.left = '';
     badge.style.width = '';
-    positionAppearanceLockBadge();
+    positionImageLockBadge();
     return;
   }
   // 접힌 퀵 슬롯과 같은 너비로(사용자 지정 2026-10-10). 패널이 없을 때의 너비는 CSS 가 같은 식으로 정한다.
@@ -1725,7 +1809,7 @@ function positionReferenceInsetBadge() {
   if (room > 0) top = Math.min(top, room);
   badge.style.top = `${Math.round(Math.max(gap, top))}px`;
   badge.style.left = `${Math.round(above.left - viewerBox.left)}px`;
-  positionAppearanceLockBadge();      // the lock badge sits right below this one
+  positionImageLockBadge();      // the lock badge sits right below this one
 }
 
 /** 퀵 패널의 높이가 바뀌면 배지를 다시 앉힌다.
@@ -2065,7 +2149,7 @@ function callResultImageAction(methodName, ...args) {
   return method(...args);
 }
 
-const resultImageActionsReady = import('./js/features/resultImageActions.mjs?v=20261122-alock2')
+const resultImageActionsReady = import('./js/features/resultImageActions.mjs?v=20261122-ilock1')
   .then(({createResultImageActions}) => {
     resultImageActions = createResultImageActions({
       document,
@@ -2394,7 +2478,7 @@ import('./js/features/downloadDock.mjs?v=20261022-dock1')
 import('./js/features/mobileFullscreen.mjs?v=20261030-mfs4')
   .then(({createMobileFullscreen}) => createMobileFullscreen({document, window}))
   .catch(error => console.error('Failed to initialize mobile fullscreen module', error));
-const resultContextMenuReady = import('./js/features/resultContextMenu.mjs?v=20261122-alock1')
+const resultContextMenuReady = import('./js/features/resultContextMenu.mjs?v=20261122-ilock1')
   .then(({createResultContextMenu}) => {
     resultContextMenu = createResultContextMenu({
       document,
@@ -2415,7 +2499,7 @@ const resultContextMenuReady = import('./js/features/resultContextMenu.mjs?v=202
       onImageAction: (context, action) => callResultImageAction('requestContextImageAction', context, action),
       onLoadPrompt: context => callResultImageAction('loadPromptFromContext', context),
       onRerollPrompt: context => callResultImageAction('rerollPromptFromContext', context),
-      onAppearanceLock: context => openAppearanceLockFromContext(context),
+      onImageLock: context => openImageLockFromContext(context),
       onRestoreSettings: context => callResultImageAction('restoreSettingsFromContext', context),
       onOpenLocation: context => callResultImageAction('openLocationFromContext', context),
       onSaveImage: context => callResultImageAction('saveImageFromContext', context),
@@ -3358,7 +3442,7 @@ const characterPanelReady = import('./js/features/characterPanel.mjs?v=20261021-
 // ⚠️ `?v=` 는 이 파일을 고칠 때마다 **함께 바꾼다.** 안 바꾸면 브라우저가 옛
 //    모듈을 계속 쓴다 - 서버가 새 코드를 줘도 import 는 URL 로 캐시된다(실측:
 //    ResizeObserver 를 넣었는데 새로고침해도 안 붙었다).
-const characterQuickPanelReady = import('./js/features/characterQuickPanel.mjs?v=20261122-alock4')
+const characterQuickPanelReady = import('./js/features/characterQuickPanel.mjs?v=20261122-ilock1')
   .then(({createCharacterQuickPanel}) => {
     characterQuickPanel = createCharacterQuickPanel({
       document, escHtml,
@@ -3946,7 +4030,7 @@ const searchQuickWindowReady = import('./js/features/searchQuickWindow.mjs?v=202
   .catch(error => {
     console.error('Failed to initialize search window module', error);
   });
-const searchPanelReady = import('./js/features/searchPanel.mjs?v=20260926-temp-live2')
+const searchPanelReady = import('./js/features/searchPanel.mjs?v=20261122-presets4')
   .then(({createSearchPanel}) => {
     searchPanelControl = createSearchPanel({
       document,
@@ -5558,9 +5642,9 @@ function onInitComplete() {
   if (currentModuleId && !isModuleStateGuarded(currentModuleId)) {
     requestModuleState(currentModuleId);
   }
-  // The server keeps the appearance lock only in memory; after a reconnect (e.g. a server
+  // The server keeps the image lock only in memory; after a reconnect (e.g. a server
   // restart) re-read it so a stale badge does not claim a lock that is gone.
-  refreshAppearanceLockState();
+  refreshImageLockState();
   // 떠 있는 창(조건부)은 currentModuleId 가 아니다 - 열려 있으면 따로 다시 받는다.
   // 없으면 연결 전·재연결 중에 연 창이 영영 빈 채로 남는다.
   if (conditionalPromptWindow && conditionalPromptWindow.isOpen()) requestModuleState('conditional_prompt');
@@ -5914,6 +5998,7 @@ const wsMessageHandlers = {
   search_loading: onSearchLoading,
   bucket_dates: onBucketDates,
   search_history: m => { if (searchPanelControl) searchPanelControl.onSearchHistory(m); },
+  search_presets: m => { if (searchPanelControl) searchPanelControl.onSearchPresets(m); },
   temporary_search_state: m => {
     temporarySearchState = m;
     temporarySearchWorkspace = m.workspace_id || 'normal';
@@ -5994,7 +6079,7 @@ const wsMessageHandlers = {
   inpaint_sequence_generation_error: m => showToast(
     `I.Sequence 컷${m.frame ? ' ' + m.frame : ''} 생성 실패: ${m.message || 'failed'}`, 'error'),
   load_prompt: m => onLoadPrompt(m.prompt),
-  appearance_lock_state: m => setAppearanceLockState(m),
+  image_lock_state: m => setImageLockState(m),
   viewer_new_image: onViewerNewImage,
   viewer_history_removed: onViewerHistoryRemoved,
   viewer_history_cleared: onViewerHistoryCleared,
@@ -8360,7 +8445,7 @@ function setNaiHighlightMode(mode) {
   // 캐릭터 프롬프트는 NAID4+ 전용 - 모드가 바뀌면 빠른 패널도 따라 사라진다.
   syncCharacterQuickPanelVisibility();
   // The lock only applies in NAI mode (server-side `active`), so refresh it on mode changes.
-  refreshAppearanceLockState();
+  refreshImageLockState();
 }
 
 /** 메인 프롬프트가 아닌 칸에 **같은** 강조를 붙인다(리모컨의 PE 빠른 수정).
@@ -12774,7 +12859,7 @@ const promptEngineeringWindowReady = peUsesWindow
       console.error('Failed to initialize prompt engineering window', error);
     })
   : Promise.resolve();
-const promptEngineeringPanelReady = import('./js/features/promptEngineeringPanel.mjs?v=20261122-alock1')
+const promptEngineeringPanelReady = import('./js/features/promptEngineeringPanel.mjs?v=20261122-ilock1')
   .then(({createPromptEngineeringPanel}) => {
     promptEngineeringPanelControl = createPromptEngineeringPanel({
       document,

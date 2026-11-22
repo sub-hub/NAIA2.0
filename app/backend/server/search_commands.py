@@ -46,6 +46,9 @@ SEARCH_COMMAND_TYPES = {
     "delete_filter_preset",
     "get_search_history",
     "delete_search_history",
+    "get_search_presets",
+    "save_search_preset",
+    "delete_search_preset",
 }
 
 
@@ -433,6 +436,24 @@ async def handle_search_command(
         else:
             items = await run_in_thread(search_history.load_history, context)
         await _send_json(ws, {"type": "search_history", "items": items})
+        return True
+
+    # Search presets: named full search conditions (core/search_presets.py).
+    if command_type in {"get_search_presets", "save_search_preset", "delete_search_preset"}:
+        from core import search_presets
+
+        if command_type == "save_search_preset":
+            items = await run_in_thread(search_presets.save_preset, context, command.get("preset"))
+        elif command_type == "delete_search_preset":
+            items = await run_in_thread(search_presets.delete_preset, context, command.get("name"))
+        else:
+            items = await run_in_thread(search_presets.load_presets, context)
+        payload = {"type": "search_presets", "items": items}
+        if command_type == "get_search_presets":
+            await _send_json(ws, payload)
+        else:
+            # Every tab shows the same list, and the image lock may point at a preset.
+            await _send_shared_search_state(ws, payload, clients=clients, broadcast_json=broadcast_json)
         return True
 
     return False

@@ -53,6 +53,13 @@ def _json_safe_debug_value(value):
     return str(value)
 
 
+def _plain_column(source_row: Any, key: str) -> str:
+    """A text column of the source row (``character``, ``copyright``), or ``""`` for NaN and non-text."""
+    getter = getattr(source_row, "get", None)
+    value = getter(key) if callable(getter) else None
+    return value.strip() if isinstance(value, str) else ""
+
+
 def _normalize_closed_eyes_tag(tag: Any) -> str:
     text = str(tag or "").strip().lower().replace("_", " ")
     text = re.sub(r'^[\d.]+::\s*', '', text)
@@ -386,16 +393,15 @@ class PromptEngineeringHeadlessPostHook:
         removed_tags = context.removed_tags
         source_row = context.source_row
         checkbox_options = {} if skip_preprocessing else dict(options.get("preprocessing_options") or {})
-        # Appearance lock (NAI): force name, copyright and appearance removal (plus clothes) on this
-        # copy only; the preset's stored options stay as they are. The broader classifier pass
-        # runs after apply_tag_filters below (appearance_lock.strip_row_tags).
-        from core import appearance_lock
+        # Image lock (NAI): the lock decides the removal options mapped to its categories, on this
+        # copy only; the preset's stored options stay as they are. The row is then reshaped after
+        # apply_tag_filters below (image_lock.apply_to_row).
+        from core import image_lock
 
-        lock = None if skip_preprocessing else appearance_lock.active_lock(
+        lock = None if skip_preprocessing else image_lock.active_lock(
             self.app_context, context.settings.get("api_mode"))
         if lock:
-            for key in appearance_lock.forced_options(lock):
-                checkbox_options[key] = True
+            checkbox_options.update(image_lock.forced_options(lock))
 
         # 이벤트 스트림(Storyteller) 중에는 Tag Implication 압축을 소비 지점에서 강제
         # OFF — 'bikini pull' 같은 새 행 태그가 carry로 유지해야 할 'bikini' 등 의상
@@ -467,11 +473,11 @@ class PromptEngineeringHeadlessPostHook:
         if filter_result.get("removed_clothes_by_region"):
             context.metadata["removed_clothes_by_region"] = filter_result["removed_clothes_by_region"]
         if lock:
-            lock_removed = appearance_lock.strip_row_tags(
+            lock_removed = image_lock.apply_to_row(
                 main_tags, removed_tags, lock, filter_manager, getattr(self.app_context, "repo_root", None))
             filter_result.setdefault("filter_log", []).append({
-                "name": "외형 고정",
-                "key": "appearance_lock",
+                "name": "고정",
+                "key": "image_lock",
                 "enabled": True,
                 "removed": lock_removed,
             })
@@ -511,6 +517,14 @@ class PromptEngineeringHeadlessPostHook:
         context.prefix_tags = prefix_tags
         context.postfix_tags = postfix_tags
         context.main_tags = main_tags
+        # The image lock dialog reads an image's tags without P.Eng's prefix and suffix
+        # (copied onto the request by HeadlessGenerationService._capture_prompt_body).
+        if isinstance(getattr(context, "metadata", None), dict):
+            context.metadata["prompt_body_tags"] = [str(tag) for tag in main_tags]
+            context.metadata["prompt_source_names"] = {
+                "character": "" if checkbox_options.get("remove_character_name") else _plain_column(source_row, "character"),
+                "copyright": "" if checkbox_options.get("remove_work_title") else _plain_column(source_row, "copyright"),
+            }
         return context
 
 

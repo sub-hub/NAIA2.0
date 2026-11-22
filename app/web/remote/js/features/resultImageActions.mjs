@@ -270,8 +270,8 @@ export function createResultImageActions({
     }
   }
 
-  /** Base prompt and character prompts saved in the image's metadata. The appearance lock
-   *  re-classifies them when the random row is no longer in memory. */
+  /** Base prompt and character prompts saved in the image's metadata. The image lock
+   *  re-classifies them when the request's own tags are no longer in memory. */
   async function readCharacterSourceFromContext(context = {}) {
     const data = await loadContextMetadataPayload(context);
     const characters = findMetadataActionValue(data, ['characters']);

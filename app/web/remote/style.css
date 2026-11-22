@@ -24643,7 +24643,7 @@ body:has(#resultViewer.is-cq-posedit) #naiUsagePill { display: none !important; 
   outline: 1px solid var(--accent-glow); outline-offset: -2px;
 }
 .cq-box.is-open .cq-head { background: transparent; }
-/* With a virtual label (e.g. the appearance lock) the head must not shrink below its "CHARACTER"
+/* With a virtual label (e.g. the image lock) the head must not shrink below its "CHARACTER"
    title, or the title paints over the label. Scoped to that case so the plain header is unchanged. */
 .cq-box.is-open .cq-head-row:has(.cq-virtual) .cq-head { flex: 1 0 auto; }
 .cq-caret {
@@ -33895,24 +33895,27 @@ body[data-pe-quick-state="empty"] .pe-quick-btn { color: var(--text-dim); border
    The badge reuses the inset badge styles in teal so both stay distinguishable; app.js places it below the inset badge. */
 /* Fallback position below the inset badge (inset top 10px + ~25px badge + 6px gap); app.js sets
    the real top from the elements above. */
-.reference-inset-badge.appearance-lock-badge { top: 42px; border-color: rgba(64, 196, 180, 0.55); }
-.reference-inset-badge.appearance-lock-badge:hover,
-.reference-inset-badge.appearance-lock-badge:focus-within { border-color: rgba(64, 196, 180, 0.9); }
-.appearance-lock-badge button:hover { background: rgba(64, 196, 180, 0.18); }
-.appearance-lock-badge .reference-inset-badge-mark {
+.reference-inset-badge.image-lock-badge { top: 42px; border-color: rgba(64, 196, 180, 0.55); }
+.reference-inset-badge.image-lock-badge:hover,
+.reference-inset-badge.image-lock-badge:focus-within { border-color: rgba(64, 196, 180, 0.9); }
+.image-lock-badge button:hover { background: rgba(64, 196, 180, 0.18); }
+.image-lock-badge .reference-inset-badge-mark {
   border-color: #5fd4c4; border-radius: 50%; background: radial-gradient(circle, #5fd4c4 0 40%, transparent 42%);
 }
-.appearance-lock-badge-tag {
+.image-lock-badge-tag {
   flex: none; display: flex; align-items: center; padding: 0 5px; white-space: nowrap;
   font-family: var(--font-mono); font-size: 10px; color: #9fe6dc;
   border-left: 1px solid rgba(255, 255, 255, 0.09);
 }
 /* Paused: the inset or an inpaint session owns the characters. The lock is still set, so the badge stays. */
-.appearance-lock-badge.is-paused { border-style: dashed; }
-.appearance-lock-badge.is-paused .reference-inset-badge-mark { background: none; }
-.appearance-lock-badge.is-paused .appearance-lock-badge-tag { color: var(--text-dim); }
+.image-lock-badge.is-paused { border-style: dashed; }
+.image-lock-badge.is-paused .reference-inset-badge-mark { background: none; }
+.image-lock-badge.is-paused .image-lock-badge-tag { color: var(--text-dim); }
+/* SFW/NSFW switch inside the badge */
+button.image-lock-badge-rating { border-top: none; border-right: none; border-bottom: none; background: transparent; cursor: pointer; }
+button.image-lock-badge-rating.is-nsfw { color: #f3a3b5; }
 
-/* P.Eng preprocessing rows forced on by the appearance lock */
+/* P.Eng preprocessing rows decided by the image lock */
 .pe-opt-row.is-lock-forced { cursor: default; }
 .pe-opt-row.is-lock-forced .pe-opt-label { color: #9fe6dc; }
 .pe-opt-hint.pe-opt-lock { color: #5fd4c4; }
@@ -33922,12 +33925,7 @@ body[data-pe-quick-state="empty"] .pe-quick-btn { color: var(--text-dim); border
   display: flex; flex-direction: column; gap: 12px;
   width: min(640px, 94vw); max-height: min(86vh, 820px); padding: 20px 22px;
 }
-.alock-head .app-confirm-title { margin-bottom: 4px; }
 .alock-source { color: var(--text-muted); font-size: 12px; line-height: 1.45; }
-.alock-body { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 4px; }
-.alock-group { display: flex; flex-direction: column; gap: 6px; }
-.alock-group.is-disabled .alock-chips { opacity: 0.45; }
-.alock-group-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .alock-group-name { color: var(--text-primary); font-size: 12px; font-weight: 700; }
 .alock-group-note { color: var(--text-dim); font-size: 11px; }
 .alock-group-all {
@@ -33935,8 +33933,6 @@ body[data-pe-quick-state="empty"] .pe-quick-btn { color: var(--text-dim); border
   color: var(--text-muted); font-size: 10.5px; padding: 1px 7px; cursor: pointer;
 }
 .alock-group-all:hover { color: var(--text-primary); border-color: var(--border-glow); }
-.alock-clothes-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; cursor: pointer; }
-.alock-clothes-toggle input { accent-color: #40c4b4; width: 14px; height: 14px; cursor: pointer; }
 .alock-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .alock-chip {
   border: 1px solid var(--border-dim); border-radius: 999px; background: rgba(255, 255, 255, 0.03);
@@ -33949,9 +33945,134 @@ body[data-pe-quick-state="empty"] .pe-quick-btn { color: var(--text-dim); border
 .alock-chip:hover:not(:disabled) { border-color: rgba(64, 196, 180, 0.9); }
 .alock-chip:focus-visible { outline: 2px solid var(--accent-glow); outline-offset: 1px; }
 .alock-chip:disabled { cursor: default; }
-.alock-others { color: var(--text-dim); font-size: 11px; }
 .alock-preview-label { color: var(--text-muted); font-size: 11px; font-weight: 700; }
-.alock-preview { width: 100%; min-height: 64px; resize: vertical; box-sizing: border-box; }
 .alock-rules { margin: 0; padding-left: 18px; color: var(--text-muted); font-size: 11.5px; line-height: 1.6; }
 .alock-rules b { color: #9fe6dc; font-weight: 700; }
 .alock-actions { grid-column: auto; margin-top: 0; }
+
+/* Image lock dialog: wide two-column layout. Left: presets, row source, preview. Right: category cards
+   in two columns, then the categories the image has no tags for as one compact strip. */
+/* Fixed height: choosing presets or modes must not resize the dialog; the two columns scroll inside. */
+.alock-overlay .ilock-dialog {
+  width: min(1280px, 96vw); height: min(92vh, 960px); max-height: none; padding: 18px 20px 16px; gap: 14px;
+}
+.ilock-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; }
+.ilock-head .app-confirm-title { margin: 0; }
+.ilock-main {
+  flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 16px;
+}
+.ilock-side {
+  min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+  padding-right: 12px; border-right: 1px solid var(--border-dim);
+}
+.ilock-side-label {
+  margin-top: 4px; color: var(--text-dim); font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+}
+.ilock-side-label:first-child { margin-top: 0; }
+.ilock-presets { display: flex; flex-direction: column; gap: 5px; }
+.ilock-preset {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left;
+  border: 1px solid var(--border-dim); border-radius: 7px; background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted); padding: 6px 10px; cursor: pointer;
+}
+.ilock-preset b { font-size: 12.5px; font-weight: 700; color: var(--text-primary); }
+.ilock-preset span { font-size: 11px; line-height: 1.4; }
+.ilock-preset:hover { border-color: rgba(64, 196, 180, 0.7); }
+.ilock-preset.is-on { border-color: rgba(64, 196, 180, 0.85); background: rgba(64, 196, 180, 0.14); }
+.ilock-preset.is-on b { color: #e6fbf8; }
+.ilock-mode-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.ilock-person { color: var(--text-dim); font-family: var(--font-mono); font-size: 11px; }
+.ilock-check { display: flex; align-items: center; gap: 6px; font-size: 12px; cursor: pointer; }
+.ilock-check input { accent-color: #40c4b4; width: 14px; height: 14px; cursor: pointer; }
+.ilock-check.is-idle { opacity: 0.4; cursor: default; }
+.ilock-check.is-idle input { cursor: default; }
+.ilock-rowrule { font-size: 11.5px; color: var(--text-muted); }
+.ilock-rowrule b { color: #9fe6dc; font-weight: 700; }
+.ilock-pools { border: 1px solid var(--border-dim); border-radius: 7px; background: rgba(255, 255, 255, 0.02); }
+.ilock-pools summary {
+  display: flex; align-items: baseline; gap: 8px; padding: 6px 10px; cursor: pointer; list-style: none;
+}
+.ilock-pools summary::-webkit-details-marker { display: none; }
+.ilock-pools summary::before { content: '▸'; color: var(--text-dim); font-size: 10px; }
+.ilock-pools[open] summary::before { content: '▾'; }
+.ilock-pools-title { flex: none; font-size: 12px; font-weight: 700; color: var(--text-primary); }
+.ilock-pools-sum { min-width: 0; font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ilock-pools[open] .ilock-pools-sum { display: none; }
+.ilock-pools-body { display: flex; flex-direction: column; gap: 6px; padding: 0 10px 9px; }
+.ilock-field { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--text-muted); min-width: 0; }
+.ilock-field select {
+  width: 100%; height: 26px; font-size: 12px; border-radius: 5px;
+  border: 1px solid var(--border-dim); background: var(--bg-surface, #15151b); color: var(--text-primary);
+}
+.ilock-warn {
+  font-size: 11.5px; line-height: 1.5; color: #f0d58a; border: 1px solid rgba(240, 213, 138, 0.35);
+  background: rgba(240, 213, 138, 0.06); border-radius: 6px; padding: 6px 9px;
+}
+/* Previews sit under the cards, side by side, using the room the cards leave. */
+.ilock-preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; }
+.ilock-preview-box { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ilock-preview-text {
+  font-family: var(--font-editor); font-size: 12px; line-height: 1.55; color: var(--text-primary);
+  border: 1px solid var(--border-dim); border-radius: 6px; padding: 6px 9px; min-height: 58px; max-height: 180px;
+  overflow-y: auto; word-break: break-word;
+}
+.ilock-preview-text.ilock-empty { color: var(--text-dim); font-family: inherit; font-size: 11.5px; }
+.ilock-side .alock-rules { padding-left: 16px; font-size: 11px; line-height: 1.55; }
+
+.ilock-cats { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+/* Masonry-like columns: cards differ a lot in height (features vs. one composition tag). */
+.ilock-cards { columns: 2 360px; column-gap: 10px; }
+.ilock-card {
+  break-inside: avoid; display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;
+  padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-dim); background: rgba(255, 255, 255, 0.02);
+}
+.ilock-card.is-keep { border-color: rgba(64, 196, 180, 0.45); background: rgba(64, 196, 180, 0.05); }
+.ilock-card.is-none { opacity: 0.75; }
+.ilock-card-head { display: flex; align-items: center; gap: 6px; }
+.ilock-card-head .alock-group-name { font-size: 12.5px; white-space: nowrap; }
+.ilock-count { color: var(--text-dim); font-family: var(--font-mono); font-size: 10.5px; }
+.ilock-head-gap { flex: 1 1 auto; }
+.ilock-where {
+  font-family: var(--font-mono); font-size: 9.5px; color: #9fe6dc; border: 1px solid rgba(64, 196, 180, 0.5);
+  border-radius: 3px; padding: 0 4px;
+}
+.ilock-card .alock-group-all { padding: 1px 6px; }
+.ilock-card .alock-group-all.is-idle { visibility: hidden; }
+.ilock-card .alock-chips { gap: 5px; }
+.ilock-card .alock-chip { font-size: 11.5px; line-height: 17px; padding: 1px 9px; }
+.alock-chips.is-off { opacity: 0.4; }
+.ilock-seg { display: inline-flex; flex: none; border: 1px solid var(--border-dim); border-radius: 6px; overflow: hidden; }
+.ilock-seg-btn {
+  border: none; border-right: 1px solid var(--border-dim); background: transparent; color: var(--text-muted);
+  font-size: 11.5px; padding: 2px 9px; cursor: pointer; white-space: nowrap;
+}
+.ilock-seg-btn:last-child { border-right: none; }
+.ilock-seg-btn:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.05); }
+.ilock-seg-btn.is-on { background: rgba(64, 196, 180, 0.22); color: #e6fbf8; }
+.ilock-seg-btn:focus-visible { outline: 2px solid var(--accent-glow); outline-offset: -2px; }
+.ilock-empty { color: var(--text-dim); font-size: 11px; }
+.ilock-empty-strip {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 10px;
+  border: 1px dashed var(--border-dim); border-radius: 8px;
+}
+.ilock-empty-title { color: var(--text-dim); font-size: 11px; font-weight: 700; margin-right: 2px; }
+.ilock-empty-item { display: flex; align-items: center; gap: 6px; }
+.ilock-empty-name { color: var(--text-muted); font-size: 12px; }
+.ilock-empty-item.is-random .ilock-empty-name { color: var(--text-primary); }
+
+.ilock-foot {
+  display: flex; align-items: center; gap: 14px; padding-top: 12px; border-top: 1px solid var(--border-dim);
+}
+.ilock-summary { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; }
+.ilock-summary .is-keep { color: #9fe6dc; }
+.ilock-summary .is-random { color: var(--text-muted); }
+.ilock-foot .alock-actions { flex: none; }
+
+/* Narrow screens: one column, the whole dialog scrolls. */
+@media (max-width: 880px) {
+  .alock-overlay .ilock-dialog { overflow-y: auto; height: auto; max-height: 94vh; }
+  .ilock-main { display: flex; flex-direction: column; }
+  .ilock-side { overflow: visible; padding-right: 0; border-right: none; }
+  .ilock-cats { overflow: visible; }
+  .ilock-foot { flex-direction: column; align-items: stretch; }
+}

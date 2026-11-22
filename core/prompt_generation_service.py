@@ -206,12 +206,14 @@ class PromptGenerationService:
                 remaining_count=search_results.get_count(),
             )
 
-        from core import appearance_lock
+        from core import image_lock
 
-        source_row = appearance_lock.pop_random_row(self.app_context, search_results, active_ratings)
+        source_row = image_lock.pop_random_row(self.app_context, search_results, active_ratings)
         if source_row is None:
-            if appearance_lock.active_lock(self.app_context) is not None:
-                return PromptSourcePreparation(error="외형 고정 중에는 solo 줄만 뽑습니다 - 남은 solo 줄이 없습니다.")
+            lock = image_lock.active_lock(self.app_context)
+            if lock is not None:
+                return PromptSourcePreparation(
+                    error=image_lock.empty_pool_message(lock, image_lock.load_prefs(self.app_context)))
             return PromptSourcePreparation(error="처리할 프롬프트가 더 이상 없습니다.")
         return PromptSourcePreparation(source_row=source_row, remaining_count=search_results.get_count())
 

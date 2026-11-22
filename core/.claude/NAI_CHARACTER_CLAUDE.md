@@ -103,23 +103,24 @@ HeadlessSettings 는 `NAICharacterData` 를 거치지 않고 정규화 리스트
 Some features send their own characters instead of the character module's slots without
 touching the module, so turning them off brings the real slots back. All of them put the
 characters into `sketchbook_character_prompts`, which `api_service` reads before any other
-source.
+source. The image lock may instead set `_image_lock_no_characters` (its look rolls from random
+rows), which makes `api_service` send no characters at all.
 
 | Mode | Injected by | Precedence |
 |---|---|---|
 | Inpaint session virtual characters | inpaint session params (`_inpaint_session_characters`) | 1 |
 | Reference inset virtual characters | `HeadlessImageModuleParamService._apply_reference_inset_pin` | 2 |
-| Appearance lock (`core/appearance_lock.py`) | `HeadlessImageModuleParamService._apply_appearance_lock` | 3 |
+| Image lock (`core/image_lock.py`) | `HeadlessImageModuleParamService._apply_image_lock` | 3 |
 
 Rules for a new bypass:
 
 - Apply it to plain generations only and skip any request that already chose its characters:
   `core.auto_generation_flags.EXPLICIT_CHARACTER_KEYS` is the shared list.
-- Mark the params (e.g. `_appearance_lock`) and keep the marker in
+- Mark the params (e.g. `_image_lock`) and keep the marker in
   `generation_runner._auto_generation_overrides`, so Auto Generate drops the baked characters
   and reads the live state for the next image.
 - Show it in the quick panel as a virtual character (`virtual_label`) and route its edits back
-  to the bypass, as `app.js` does for the inset and the appearance lock.
+  to the bypass, as `app.js` does for the inset and the image lock.
 
 ---
 
@@ -268,6 +269,7 @@ REFERENCE_INSET_HOOK_INFO = {
 | `core/headless_character_reference_service.py` | CR 정본 — `active_params()` / `image_data()` |
 | `core/headless_character_asset_service.py` | 요청 단위 CR 늦은 바인딩 · 벤치 모드 |
 | `core/reference_inset_service.py` | 프롬프트 인셋 트릭 |
-| `core/appearance_lock.py` | Appearance lock: locked look as C1, row stripping, solo-only row picks |
+| `core/image_lock.py` | Image lock: per-category keep / random / none, locked look as C1, row shaping and row filter |
+| `core/image_lock_pool.py` | Lock pools searched with a search preset (`core/search_presets.py`) |
 | `core/nai_model_contract.py` | `supports_character_reference` · `skip_cfg_above_sigma` |
 | `app/web/remote/js/features/interactivePanel.mjs` | 캐릭터별 Reference 가 비활성인 이유 |

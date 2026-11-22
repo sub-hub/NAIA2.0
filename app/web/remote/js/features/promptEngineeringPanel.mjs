@@ -558,13 +558,15 @@ export function createPromptEngineeringPanel({
     const preprocessing = m.preprocessing || {};
     const preprocessingOptions = buildPreprocessingOptions(preprocessing);
     const optionLabels = new Map(preprocessingOptions);
-    // Options the server forces on while the appearance lock is active (`appearance_lock_forced`). The stored
-    // value is unchanged and comes back after unlocking; until then the row shows checked and disabled.
-    const lockForced = new Set(Array.isArray(m.appearance_lock_forced) ? m.appearance_lock_forced : []);
+    // Options the image lock decides while it is active (`image_lock_forced`: {option: on}). The stored
+    // value is unchanged and comes back after unlocking; until then the row shows the lock's value, disabled.
+    const lockForced = m.image_lock_forced && typeof m.image_lock_forced === 'object' && !Array.isArray(m.image_lock_forced)
+      ? m.image_lock_forced : {};
     const optionRowHtml = (key, label) => {
-      const forced = lockForced.has(key);
+      const forced = Object.prototype.hasOwnProperty.call(lockForced, key);
+      const forcedOn = forced && !!lockForced[key];
       const desc = forced
-        ? `외형 고정 중이라 켜져 있습니다. 외형 고정을 풀면 원래 설정(${preprocessing[key] ? '켬' : '끔'})으로 돌아옵니다.`
+        ? `고정 중이라 ${forcedOn ? '켜져' : '꺼져'} 있습니다 (${forcedOn ? '원본이나 없음으로 둔 칸이라 랜덤 줄에서 걷습니다' : '랜덤으로 둔 칸이라 랜덤 줄에서 가져옵니다'}). 고정을 풀면 원래 설정(${preprocessing[key] ? '켬' : '끔'})으로 돌아옵니다.`
         : (PP_DESCRIPTIONS[key] || '');
       const guideAttr = desc ? ` data-naia-guide="${escHtml(desc)}"` : '';
       const gear = PP_GEARS[key];
@@ -572,8 +574,8 @@ export function createPromptEngineeringPanel({
         ? `<button type="button" class="pe-opt-gear" onclick="${gear[0]}" title="${escHtml(gear[1])}" aria-label="${escHtml(gear[1])}">⚙</button>`
         : '';
       return `<div class="pe-opt-cell"><label class="pe-opt-row${forced ? ' is-lock-forced' : ''}"${guideAttr}>
-      <input type="checkbox" class="pe-opt-input" ${preprocessing[key] || forced ? 'checked' : ''}${forced ? ' disabled' : ''} oninput="setPromptEngineeringOption('${key}', this.checked)">
-      <span class="pe-opt-check" aria-hidden="true"></span><span class="pe-opt-label">${escHtml(label)}${forced ? '<span class="pe-opt-hint pe-opt-lock">외형 고정</span>' : ''}</span>
+      <input type="checkbox" class="pe-opt-input" ${(forced ? forcedOn : preprocessing[key]) ? 'checked' : ''}${forced ? ' disabled' : ''} oninput="setPromptEngineeringOption('${key}', this.checked)">
+      <span class="pe-opt-check" aria-hidden="true"></span><span class="pe-opt-label">${escHtml(label)}${forced ? '<span class="pe-opt-hint pe-opt-lock">고정</span>' : ''}</span>
     </label>${gearHtml}</div>`;
     };
 

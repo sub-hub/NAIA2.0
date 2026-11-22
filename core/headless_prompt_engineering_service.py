@@ -447,8 +447,8 @@ class HeadlessPromptEngineeringService:
             "post_prompt": settings.get("post_prompt", ""),
             "auto_hide": settings.get("auto_hide_prompt", ""),
             "preprocessing": dict(settings.get("preprocessing_options") or {}),
-            # Options forced on by the appearance lock; the UI shows them checked and disabled.
-            "appearance_lock_forced": self._appearance_lock_forced(),
+            # P.Eng removal options the image lock decides ({option: on}); the UI shows them locked.
+            "image_lock_forced": self._image_lock_forced(),
             # 세션 전용 토글 — store가 아니라 context 세션 플래그에서 직접 읽는다(비영속).
             "ollama_auto_boost": bool(getattr(context, "ollama_auto_boost", False)),
             "e621_settings": dict(settings.get("e621_settings") or {}),
@@ -461,10 +461,10 @@ class HeadlessPromptEngineeringService:
         }
         return context._module_state_payload("prompt_engineering", payload)
 
-    def _appearance_lock_forced(self) -> list[str]:
-        from core import appearance_lock
+    def _image_lock_forced(self) -> dict[str, bool]:
+        from core import image_lock
 
-        return appearance_lock.forced_options(appearance_lock.active_lock(self.context))
+        return image_lock.forced_options(image_lock.active_lock(self.context))
 
     def ensure_first_run_recommended_preset(self) -> tuple[bool, str]:
         from core.prompt_engineering_settings import get_prompt_engineering_store, is_snapshot_preset_name
