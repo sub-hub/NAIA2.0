@@ -895,6 +895,9 @@
     </div>
     <div class="ctrl-buttons">
       <button class="ctrl-btn btn-rnd" id="btnRnd" onclick="send('random')"><span class="shortcut-hint">ALT + ENTER</span>Random</button>
+      <!-- Random 뒤에 한 장 생성(사용자 지시 2026-11-22). Random 단추의 잠금을 그대로 따라간다(app.js syncRandomGenerateButton). -->
+      <button class="ctrl-btn btn-rnd-gen" id="btnRndGen" onclick="randomGenerateAction()"
+              data-naia-guide="랜덤 프롬프트를 뽑고 바로 한 장 생성합니다. Random 단추는 그대로 뽑기만 합니다. Auto Gen 이 켜져 있으면 Random 과 같이 연속 생성으로 이어집니다.">Rnd + Gen</button>
       <button class="ctrl-btn btn-gen" id="btnGen" onclick="generateAction()"><span class="shortcut-hint">CTRL + ENTER</span>Generate</button>
     </div>
   </div>

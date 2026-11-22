@@ -955,6 +955,9 @@ def _should_generate_once_after_random(
                 return False
         except Exception:
             pass
+    # Random+Gen 단추는 옵션과 상관없이 이 Random 에만 한 장을 붙인다(`generate_once`). 위 가드는 그대로 받는다.
+    if command.get("generate_once") is True:
+        return True
     return bool(context._coerce_bool(context.get_options().get("generate_on_random", False)))
 
 

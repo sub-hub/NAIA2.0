@@ -10126,7 +10126,7 @@ function runStorytellerCycle(request) {
   setModuleParam('storyteller', 'run_cycle', JSON.stringify(payload));
 }
 
-function requestRandomPrompt({force = false, bootstrap = false, pressed = false} = {}) {
+function requestRandomPrompt({force = false, bootstrap = false, pressed = false, generateOnce = false} = {}) {
   flushPromptEngineeringEdits();
   if (window.eventMap?.isRandomLinkPending?.()) return false;
   if (window.eventMap?.isRandomLinked?.() && awaitingMyRandom) return false;
@@ -10201,6 +10201,8 @@ function requestRandomPrompt({force = false, bootstrap = false, pressed = false}
     // '랜덤을 누를 때 생성합니다'(세션 옵션)를 건다 - 첫 실행의 Random 에는 붙지 않는다(이벤트 맵 연동 중의
     // Random 단추에는 붙는다 - 사용자 지시 2026-10-11).
     ...(pressed ? {pressed: true} : {}),
+    // Rnd + Gen 단추: 이 Random 에만 한 장을 붙인다('랜덤을 누를 때 생성합니다' 옵션과 같은 길, 옵션은 안 건드린다).
+    ...(pressed && generateOnce ? {generate_once: true} : {}),
   }));
   return true;
 }
@@ -10284,6 +10286,38 @@ function generateAction() {
   send('generate', {queue: true});
 }
 
+/** Rnd + Gen 단추. Random 과 같은 입구(`send('random')`)를 지나 연타, 풀 로딩, 인페인트 세션 차단을 그대로 받는다.
+ *  Sequence, I.Sequence 탭의 Random 은 원래 생성까지 하므로 그대로 둔다. 프리셋 탭의 Random 은 프리셋 고르기라
+ *  생성을 붙일 자리가 없다 - 단추를 잠근다(`syncRandomGenerateButton`). */
+function randomGenerateAction() {
+  if (randomGenerateBlockedByTab()) return;
+  send('random', {generateOnce: true});
+}
+
+function randomGenerateBlockedByTab() {
+  return activePromptTab === 'preset' && !window.eventMap?.isRandomLinked?.();
+}
+
+/** Rnd + Gen 단추의 잠금은 Random 단추를 그대로 따른다. Random 의 잠금을 바꾸는 자리가 여럿이라
+ *  하나하나 고치지 않고 그 단추를 지켜본다(속성, 글자 갱신 모두). */
+function syncRandomGenerateButton() {
+  const btn = $('btnRndGen');
+  if (!btn || !btnRnd) return;
+  const blocked = randomGenerateBlockedByTab();
+  btn.disabled = btnRnd.disabled || blocked;
+  btn.style.opacity = blocked ? '' : btnRnd.style.opacity;
+  btn.classList.toggle('pool-locked', btnRnd.classList.contains('pool-locked'));
+  btn.title = blocked ? '프리셋 탭에서는 Random 만 씁니다' : (btnRnd.title || '');
+}
+
+if (btnRnd && typeof MutationObserver === 'function') {
+  new MutationObserver(syncRandomGenerateButton).observe(btnRnd, {
+    attributes: true,
+    attributeFilter: ['disabled', 'style', 'class', 'title'],
+    childList: true,
+  });
+}
+
 function send(cmd, options = {}) {
   // Random 은 출처를 가리지 않고 막는다 - 세션 중에 프롬프트를 새로 굴릴 이유가 없다.
   if (cmd === 'random' && virtualCharacterSession()) {
@@ -10340,7 +10374,7 @@ function send(cmd, options = {}) {
     if (window.eventMap?.isRandomLinked?.() || window.eventMap?.isRandomLinkPending?.()) {
       // 이벤트 맵이 Random 을 쥐고 있을 때도 **사람이 누른 Random** 이다 - '랜덤을 누를 때 생성합니다' 가 여기에도
       // 걸린다(사용자 지시 2026-10-11). 답을 기다리는 중의 재입력은 `requestRandomPrompt` 가 스스로 버린다.
-      requestRandomPrompt({pressed: true});
+      requestRandomPrompt({pressed: true, generateOnce: !!options.generateOnce});
       return;
     }
     // Pool still loading (chunk load / parquet load-merge-upload) → block Random
@@ -10357,7 +10391,7 @@ function send(cmd, options = {}) {
     // 직접 부른다 - 누를 때마다 새 Random 이 나가고, Random 뒤에 생성이 붙는 설정(Auto Gen · '랜덤을 누를 때
     // 생성')이면 그 수만큼 생성이 쌓였다(Codex 리뷰 2026-10-10).
     if (awaitingMyRandom) return;
-    requestRandomPrompt({pressed: true});
+    requestRandomPrompt({pressed: true, generateOnce: !!options.generateOnce});
     return;
   }
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
@@ -10449,6 +10483,7 @@ function updateGenerateButtonMode() {
       ? (promptFixed || !!presetGenerationPending || generating || !eventPresetPanel?.canRandomize?.())
       : (promptFixed || awaitingMyRandom));
     if (!rndTimer) btnRnd.innerHTML = randomButtonHtml();
+    syncRandomGenerateButton();   // 탭이 바뀌어도 Random 의 속성이 그대로면 observer 가 안 깨어난다
   }
   if (!generating) {
     const promptFixed = getOptionChecked('prompt_fixed');

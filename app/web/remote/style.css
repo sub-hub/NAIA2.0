@@ -10809,6 +10809,15 @@ body.resizing-result-info {
   background: linear-gradient(135deg, #9654a8, #c77dba); color: #fff;
   box-shadow: 0 4px 16px rgba(199,125,186,0.2);
 }
+.btn-rnd-gen {
+  background: linear-gradient(135deg, #9654a8, #7c6aef); color: #fff;
+  box-shadow: 0 4px 16px rgba(160,110,220,0.22);
+}
+.btn-rnd-gen.pool-locked {
+  pointer-events: none;
+  opacity: 0.45;
+  cursor: wait;
+}
 .ctrl-btn .shortcut-hint {
   display: none;
 }
@@ -32363,7 +32372,8 @@ body.assets-v5-mode .assistants-section,
 body.assets-v5-mode #moduleLauncher,
 body.assets-v5-mode .bottom-controls > .options-row,
 body.assets-v5-mode .bottom-controls > .quick-params,
-body.assets-v5-mode #btnRnd { display: none !important; }
+body.assets-v5-mode #btnRnd,
+body.assets-v5-mode #btnRndGen { display: none !important; }
 body.assets-v5-mode #btnGen { flex: 1 1 100%; grid-column: 1 / -1; }
 
 .cb5-blocks {
