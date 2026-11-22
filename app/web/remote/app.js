@@ -13832,6 +13832,10 @@ function onAutoSaveWebpChange(checked) {
   if (autoSavePanel) autoSavePanel.onWebpChange(checked);
 }
 
+function onAutoSaveFormatChange(value) {
+  if (autoSavePanel) autoSavePanel.onFormatChange(value);
+}
+
 function onBulkSaveOrderChange(value) {
   if (autoSavePanel) autoSavePanel.onBulkSaveOrderChange(value);
 }

@@ -401,6 +401,7 @@ export function createResultImageActions({
   function mimeTypeForFilename(filename) {
     const lower = String(filename || '').toLowerCase();
     if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.avif')) return 'image/avif';
     if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
     if (lower.endsWith('.gif')) return 'image/gif';
     if (lower.endsWith('.bmp')) return 'image/bmp';

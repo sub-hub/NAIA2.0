@@ -78,6 +78,10 @@ class ImageMetadataExtractor:
             else:
                 img = image_path
 
+            # NAIA 가 AVIF 로 저장한 그림은 PNG 텍스트 청크를 EXIF 에 담아 둔다 - info 로 되돌린다.
+            from utils.avif_image import restore_png_text
+            restore_png_text(img)
+
             # NovelAI 메타데이터도 포함
             result = {}
             info = img.info or {}
@@ -830,6 +834,10 @@ class ImageMetadataExtractor:
     @staticmethod
     def _extract_from_exif(img: Image.Image) -> Optional[Dict[str, Any]]:
         """EXIF 데이터에서 메타데이터 추출 - WebUI 호환"""
+        from utils.avif_image import read_png_text
+        if read_png_text(img):
+            # NAIA AVIF 의 UserComment 는 WebUI 글이 아니라 PNG 청크 묶음이다(restore_png_text 가 이미 풀었다).
+            return None
         try:
             # WebUI style EXIF extraction
             if PIEXIF_AVAILABLE and hasattr(img, 'info') and 'exif' in img.info:

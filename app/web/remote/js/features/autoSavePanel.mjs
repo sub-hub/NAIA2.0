@@ -19,6 +19,7 @@ export function createAutoSavePanel({
   function defaultState() {
     return {
       auto_save: enabled,
+      save_format: 'png',
       save_as_webp: false,
       history_limit_enabled: false,
       bulk_save_order: 'oldest',
@@ -83,6 +84,12 @@ export function createAutoSavePanel({
       ? panelState.bulk_save_order_options
       : [{value: 'oldest', label: '오래된 이미지 먼저'},
          {value: 'newest', label: '최근 이미지 먼저'}];
+    // 저장 형식. 예전 백엔드는 save_as_webp 만 준다 - 그때는 두 칸으로 그린다.
+    const formatOptions = (panelState.save_format_options || []).length
+      ? panelState.save_format_options
+      : [{value: 'png', label: 'PNG'}, {value: 'webp', label: 'WEBP'}];
+    const saveFormat = panelState.save_format || (panelState.save_as_webp ? 'webp' : 'png');
+    const formatHint = (formatOptions.find(o => String(o.value) === String(saveFormat)) || {}).hint || '';
     const modeOptions = (panelState.quicksave_mode_options || []).map(o =>
       `<option value="${escHtml(String(o.value))}"${
         String(panelState.quicksave_mode) === String(o.value) ? ' selected' : ''
@@ -141,11 +148,19 @@ export function createAutoSavePanel({
             Save Directory Settings
           </button>
         </div>
-        <label class="mod-checkbox-item">
-          <input type="checkbox" ${panelState.save_as_webp ? 'checked' : ''}
-                 onchange="onAutoSaveWebpChange(this.checked)">
-          <span class="mod-checkbox-label">WEBP로 저장</span>
-        </label>
+        <div class="auto-save-order-row">
+          <span class="auto-save-order-label">저장 형식</span>
+          <div class="auto-save-order-seg" role="group" aria-label="저장 형식">
+            ${formatOptions.map(o => `
+              <button type="button" class="auto-save-order-btn${
+                String(saveFormat) === String(o.value) ? ' is-active' : ''}"
+                onclick="onAutoSaveFormatChange('${escHtml(String(o.value))}')"
+                aria-pressed="${String(saveFormat) === String(o.value)}"
+                ${o.disabled ? 'disabled title="이 Pillow 빌드에는 AVIF 인코더가 없습니다"' : ''}
+                >${escHtml(o.label)}</button>`).join('')}
+          </div>
+        </div>
+        ${formatHint ? `<div class="mod-status" style="text-align:left;min-height:0">${escHtml(formatHint)}</div>` : ''}
         <label class="mod-checkbox-item">
           <input type="checkbox" ${panelState.history_limit_enabled ? 'checked' : ''}
                  onchange="onHistoryLimitToggle(this.checked)">
@@ -298,6 +313,16 @@ export function createAutoSavePanel({
     setModuleParam('auto_save', 'save_as_webp', checked ? 'true' : 'false');
   }
 
+  function onFormatChange(value) {
+    const clean = ['png', 'webp', 'avif'].includes(String(value)) ? String(value) : 'png';
+    if (lastState) {
+      lastState.save_format = clean;
+      lastState.save_as_webp = clean === 'webp';
+    }
+    render();                                   // 눌린 칸이 바로 보이게
+    setModuleParam('auto_save', 'save_format', clean);
+  }
+
   function onHistoryLimitToggle(checked) {
     if (lastState) {
       lastState.history_limit_enabled = !!checked;
@@ -396,6 +421,7 @@ export function createAutoSavePanel({
     renderCached,
     updateSaveUi,
     onWebpChange,
+    onFormatChange,
     onQuicksaveModeChange,
     onQuicksaveDirChange,
     onQuicksaveFolderChange,

@@ -10,10 +10,13 @@ import re
 from core import image_classification
 from core import result_image_payload_service as result_images
 from core.headless_payload_utils import is_loopback_host
+from utils.avif_image import avif_save_available, png_bytes_to_avif
 
 
 AUTO_SAVE_DEFAULTS = {
     "auto_save": True,
+    # 저장 형식. 빈 값이면 예전 `save_as_webp` 를 따른다(그 키만 있던 설정을 그대로 읽는다).
+    "save_format": "",
     "save_as_webp": False,
     "history_limit_enabled": False,
     "max_history_length": 2000,
@@ -31,6 +34,12 @@ AUTO_SAVE_DEFAULTS = {
     "quicksave_dir": "",
     "quicksave_folder": "date",
 }
+SAVE_FORMAT_OPTIONS = [
+    {"value": "png", "label": "PNG", "hint": "원본 그대로 (무손실)"},
+    {"value": "webp", "label": "WEBP", "hint": "미리보기용 사본 (손실, 생성 정보 없음)"},
+    {"value": "avif", "label": "AVIF", "hint": "원본의 약 1/6 크기, 생성 정보 유지"},
+]
+SAVE_FORMAT_EXTENSIONS = {"png": ".png", "webp": ".webp", "avif": ".avif"}
 BULK_SAVE_ORDER_OPTIONS = [
     {"value": "oldest", "label": "오래된 이미지 먼저"},
     {"value": "newest", "label": "최근 이미지 먼저"},
@@ -129,7 +138,14 @@ class HeadlessSaveService:
             if key in context.auto_save_state
         })
         state["auto_save"] = context._coerce_bool(state["auto_save"])
-        state["save_as_webp"] = context._coerce_bool(state["save_as_webp"])
+        state["save_format"] = self.save_format()
+        # 예전 클라이언트가 읽는 키. 형식에서 파생한다.
+        state["save_as_webp"] = state["save_format"] == "webp"
+        avif_ok = avif_save_available()
+        state["save_format_options"] = [
+            {**option, "disabled": option["value"] == "avif" and not avif_ok}
+            for option in SAVE_FORMAT_OPTIONS
+        ]
         state["history_limit_enabled"] = context._coerce_bool(state["history_limit_enabled"])
         state["max_history_length"] = int(state["max_history_length"] or 2000)
         state["memory_action"] = int(state["memory_action"] or 1)
@@ -236,7 +252,18 @@ class HeadlessSaveService:
             if clean not in allowed:
                 return None
             context.auto_save_state[key] = clean
-        elif key in {"auto_save", "save_as_webp", "history_limit_enabled"}:
+        elif key == "save_format":
+            clean = str(value or "").strip().lower()
+            if clean not in SAVE_FORMAT_EXTENSIONS or (clean == "avif" and not avif_save_available()):
+                return None
+            context.auto_save_state["save_format"] = clean
+            context.auto_save_state["save_as_webp"] = clean == "webp"
+        elif key == "save_as_webp":
+            # 예전 클라이언트의 체크박스. 형식 값도 같이 맞춘다.
+            as_webp = context._coerce_bool(value)
+            context.auto_save_state["save_as_webp"] = as_webp
+            context.auto_save_state["save_format"] = "webp" if as_webp else "png"
+        elif key in {"auto_save", "history_limit_enabled"}:
             context.auto_save_state[key] = context._coerce_bool(value)
             if key == "auto_save":
                 context.remote_options["auto_save"] = bool(context.auto_save_state[key])
@@ -302,12 +329,12 @@ class HeadlessSaveService:
         items = context.result_store.unsaved_items(oldest_first=oldest_first)
         if not items:
             return {"saved": 0, "remaining": 0, "paths": []}
-        save_as_webp = context._coerce_bool(self.auto_save_state_payload().get("save_as_webp"))
+        save_format = self.save_format()
         directory = self.current_save_directory()
         directory.mkdir(parents=True, exist_ok=True)
         saved_paths: list[str] = []
         for item in list(items):
-            target = self._save_history_item_to_directory(item, directory, save_as_webp=save_as_webp)
+            target = self._save_history_item_to_directory(item, directory, save_format=save_format)
             saved_paths.append(str(target))
         return {
             "saved": len(saved_paths),
@@ -327,10 +354,9 @@ class HeadlessSaveService:
                 "path": existing_path,
                 "current_save_directory": str(Path(existing_path).parent),
             }
-        save_as_webp = context._coerce_bool(self.auto_save_state_payload().get("save_as_webp"))
         directory = self.current_save_directory()
         directory.mkdir(parents=True, exist_ok=True)
-        target = self._save_history_item_to_directory(item, directory, save_as_webp=save_as_webp)
+        target = self._save_history_item_to_directory(item, directory, save_format=self.save_format())
         return {
             "saved": 1,
             "remaining": context.result_store.unsaved_history_count(),
@@ -395,17 +421,11 @@ class HeadlessSaveService:
         # 폴더를 적용하고 항목을 saved 로 표시한다. 빠른 저장은 이름 규칙이 강제고
         # (`<세션시작시간>_<원래 이름>`) Auto Save 와는 별개의 사본이므로, 항목의
         # 저장 상태를 건드리면 미저장 개수가 어긋난다.
-        save_as_webp = context._coerce_bool(
-            context.auto_save_state.get("save_as_webp"))
+        data, extension = self._encode_history_item(item, self.save_format())
         # item.filename 은 이미 `.png` 로 끝난다 — 그대로 쓰면 확장자가 겹친다.
-        extension = ".webp" if save_as_webp else ".png"
         stem = Path(str(getattr(item, "filename", "") or "image")).stem or "image"
         target = directory / self.quicksave_filename(stem + extension)
-        if save_as_webp:
-            target.write_bytes(item.webp_bytes)
-        else:
-            png_bytes, _ = result_images.history_item_png_payload(item, label=item.filename)
-            target.write_bytes(png_bytes)
+        target.write_bytes(data)
         self._remember_quicksave(item, target)
         return {"ok": True, "path": str(target), "mode": "write",
                 "directory": str(directory)}
@@ -424,26 +444,27 @@ class HeadlessSaveService:
         *,
         save_as_webp: bool | None = None,
         same_directory: bool = False,
+        save_format: str | None = None,
     ) -> dict[str, Any]:
         """고른 히스토리 항목을 한 번에 저장한다.
 
         **단건 저장과 같은 규칙을 따른다.** 형식은 Auto Save 설정을 그대로 쓰고
-        (`save_as_webp=None`), 분류 폴더도 그대로 적용한다. 예전에는 WebP 를
-        강제하고 분류를 건너뛰었는데, 같은 버튼이 상황에 따라 다른 곳에 다른
-        형식으로 저장하면 나중에 파일을 못 찾는다(사용자 결정 2026-08-05).
-        호출자가 명시하면 그때만 다르게 간다.
+        (`save_format`, `save_as_webp` 둘 다 None), 분류 폴더도 그대로 적용한다.
+        예전에는 WebP 를 강제하고 분류를 건너뛰었는데, 같은 버튼이 상황에 따라
+        다른 곳에 다른 형식으로 저장하면 나중에 파일을 못 찾는다(사용자 결정
+        2026-08-05). 호출자가 명시하면 그때만 다르게 간다. `save_as_webp` 는
+        `save_format` 이전의 인자라 남겨 둔다(True=webp, False=png).
 
         **이미 저장된 항목은 건너뛴다.** 단건에는 있던 가드가 여기에는 없어서,
         두 번 누르면 파일이 두 배가 되고 `mark_saved` 가 `filepath` 를 새 파일로
         재지정해 **원본이 고아로 남았다**(병합 전 필수 #1).
         """
         context = self.context
-        if save_as_webp is None:
-            # 플래그 하나만 필요하다 — `auto_save_state_payload()` 는 모듈 상태 전체를
-            # 만들면서 `context._module_state_payload` 까지 부른다. 기본값 처리는 같게
-            # 두되 그 의존은 끌고 오지 않는다.
-            save_as_webp = context._coerce_bool(context.auto_save_state.get(
-                "save_as_webp", AUTO_SAVE_DEFAULTS.get("save_as_webp")))
+        if save_format not in SAVE_FORMAT_EXTENSIONS:
+            if save_as_webp is not None:
+                save_format = "webp" if save_as_webp else "png"
+            else:
+                save_format = self.save_format()
         directory = self.current_save_directory()
         directory.mkdir(parents=True, exist_ok=True)
         saved_paths: list[str] = []
@@ -465,7 +486,7 @@ class HeadlessSaveService:
                 target = self._save_history_item_to_directory(
                     item,
                     directory,
-                    save_as_webp=bool(save_as_webp),
+                    save_format=save_format,
                     apply_classification=not bool(same_directory),
                 )
                 saved_paths.append(str(target))
@@ -481,7 +502,7 @@ class HeadlessSaveService:
             "skipped_paths": skipped,
             "failed": failed,
             "paths": saved_paths,
-            "format": "webp" if save_as_webp else "png",
+            "format": save_format,
             "same_directory": bool(same_directory),
             "current_save_directory": str(directory),
             "remaining": context.result_store.unsaved_history_count(),
@@ -583,7 +604,7 @@ class HeadlessSaveService:
         item: Any,
         directory: Path,
         *,
-        save_as_webp: bool,
+        save_format: str,
         apply_classification: bool = True,
     ) -> Path:
         context = self.context
@@ -593,17 +614,33 @@ class HeadlessSaveService:
             for part in Path(subfolder).parts:
                 directory = directory / part
             directory.mkdir(parents=True, exist_ok=True)
-        extension = "webp" if save_as_webp else "png"
-        filename = self.next_save_filename(item, extension)
+        data, extension = self._encode_history_item(item, save_format)
+        filename = self.next_save_filename(item, extension.lstrip("."))
         target = self.unique_output_path(directory / filename)
-        if save_as_webp:
-            target.write_bytes(item.webp_bytes)
-        else:
-            png_bytes, _ = result_images.history_item_png_payload(item, label=item.filename)
-            target.write_bytes(png_bytes)
+        target.write_bytes(data)
         context.result_store.mark_saved(item, target)
         context.save_remote_ui_state()
         return target
+
+    def save_format(self) -> str:
+        """지금 저장 형식(png/webp/avif). `save_format` 이 없던 설정은 `save_as_webp` 를 따른다."""
+        state = self.context.auto_save_state
+        fmt = str(state.get("save_format") or "").strip().lower()
+        if fmt in SAVE_FORMAT_EXTENSIONS:
+            return fmt
+        return "webp" if self.context._coerce_bool(state.get("save_as_webp", False)) else "png"
+
+    @staticmethod
+    def _encode_history_item(item: Any, save_format: str) -> tuple[bytes, str]:
+        """저장할 바이트와 확장자. AVIF 를 못 쓰는 Pillow 면 PNG 로 남긴다(원본을 잃지 않는다)."""
+        if save_format == "webp":
+            return bytes(item.webp_bytes), ".webp"
+        png_bytes, _ = result_images.history_item_png_payload(item, label=item.filename)
+        if save_format == "avif":
+            if avif_save_available():
+                return png_bytes_to_avif(png_bytes), ".avif"
+            print("[auto_save] AVIF encoder unavailable in this Pillow build; saved as PNG.", flush=True)
+        return png_bytes, ".png"
 
     @staticmethod
     def safe_filename_stem(value: str, *, max_length: int = 120) -> str:

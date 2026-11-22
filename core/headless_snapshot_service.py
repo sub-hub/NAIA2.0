@@ -146,7 +146,7 @@ class HeadlessSnapshotService:
         save_dir = self.context._current_save_directory().resolve()
         target = (save_dir / normalized).resolve()
         target.relative_to(save_dir)                      # 밖이면 ValueError
-        if not target.is_file() or target.suffix.lower() not in {".png", ".webp", ".jpg", ".jpeg"}:
+        if not target.is_file() or target.suffix.lower() not in {".png", ".webp", ".avif", ".jpg", ".jpeg"}:
             raise FileNotFoundError("저장 폴더에서 그림을 찾지 못했습니다")
         import io
 

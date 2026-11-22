@@ -21,7 +21,7 @@ from core.headless_payload_utils import is_loopback_host
 from core.web_session_context import WebSessionContext
 
 
-IMAGE_VIEWER_EXTENSIONS = {".png", ".webp", ".jpg", ".jpeg"}
+IMAGE_VIEWER_EXTENSIONS = {".png", ".webp", ".avif", ".jpg", ".jpeg"}
 SELECTED_HISTORY_MAX_ITEMS = 200
 # sentence = Assist 결과의 끝 문장(source_row['sentence'], 09-30) — 태그를 지우고 문장만 넣은 행도 다시 생성할 수 있다(Codex H1 ③)
 PROMPT_SOURCE_KEYS = ("general", "character", "copyright", "artist", "meta", "prompt", "input", "tags", "sentence")
@@ -674,6 +674,9 @@ def insert_snapshot_image_to_history(context: WebSessionContext, name: str):
 
 
 def _build_input_metadata_payload(image, image_bytes: bytes, label: str, mime_type: str = "") -> dict[str, Any]:
+    from utils.avif_image import restore_png_text
+
+    restore_png_text(image)
     info = dict(getattr(image, "info", {}) or {})
     parsed_info: dict[str, Any] = {}
     for key, value in info.items():

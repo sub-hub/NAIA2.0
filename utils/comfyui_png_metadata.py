@@ -289,6 +289,9 @@ def _extract_webp_exif_metadata(image: Image.Image) -> Dict[str, str]:
 
 
 def extract_comfyui_workflow_metadata_from_image(image: Image.Image) -> Dict[str, Any]:
+    from utils.avif_image import restore_png_text
+
+    restore_png_text(image)
     metadata = _copy_text_metadata(dict(getattr(image, "info", {}) or {}))
     metadata.update(_extract_webp_exif_metadata(image))
     metadata = _normalize_comfyui_workflow_metadata(metadata)

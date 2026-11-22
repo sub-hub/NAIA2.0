@@ -29,6 +29,7 @@ def image_media_type_for_path(image_path: str | Path) -> str:
     ext = Path(image_path).suffix.lower()
     return {
         ".webp": "image/webp",
+        ".avif": "image/avif",
         ".jpg": "image/jpeg",
         ".jpeg": "image/jpeg",
         ".gif": "image/gif",
@@ -54,6 +55,8 @@ def image_media_type_for_bytes(image_bytes: bytes | bytearray | memoryview) -> s
         return "image/jpeg"
     if image_bytes.startswith(b"RIFF") and len(image_bytes) >= 12 and image_bytes[8:12] == b"WEBP":
         return "image/webp"
+    if len(image_bytes) >= 12 and image_bytes[4:8] == b"ftyp" and image_bytes[8:12] in (b"avif", b"avis"):
+        return "image/avif"
     if image_bytes.startswith(b"GIF87a") or image_bytes.startswith(b"GIF89a"):
         return "image/gif"
     return "application/octet-stream"
@@ -73,8 +76,11 @@ def is_png_bytes(image_bytes: bytes | bytearray | memoryview) -> bool:
 
 
 def pil_image_to_png_bytes(image) -> bytes:
+    from utils.avif_image import restore_png_text
     from utils.comfyui_png_metadata import build_pnginfo, image_to_png_bytes
 
+    # A NAIA AVIF carries its PNG text chunks in EXIF; put them back so the PNG has them.
+    restore_png_text(image)
     pnginfo = build_pnginfo(dict(getattr(image, "info", {}) or {}))
     return image_to_png_bytes(image, pnginfo=pnginfo)
 
