@@ -24643,6 +24643,9 @@ body:has(#resultViewer.is-cq-posedit) #naiUsagePill { display: none !important; 
   outline: 1px solid var(--accent-glow); outline-offset: -2px;
 }
 .cq-box.is-open .cq-head { background: transparent; }
+/* With a virtual label (e.g. the appearance lock) the head must not shrink below its "CHARACTER"
+   title, or the title paints over the label. Scoped to that case so the plain header is unchanged. */
+.cq-box.is-open .cq-head-row:has(.cq-virtual) .cq-head { flex: 1 0 auto; }
 .cq-caret {
   flex: none; display: inline-flex; align-items: center; justify-content: center;
   width: 14px; height: 14px; border-radius: 4px;
@@ -28545,6 +28548,8 @@ body.interactive-mode .opt-toggle.is-disabled { opacity: 0.38; cursor: not-allow
   border: 1px solid rgba(157,139,255,0.55); background: rgba(124,106,239,0.28);
   color: var(--text-primary); font-family: var(--font-mono); font-size: 9px; font-weight: 700;
 }
+/* The label gives way with an ellipsis when the header is tight (full text in its title). */
+.cq-virtual { flex-shrink: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ic-plane.is-rotate .ic-stage,
 .ic-plane.is-rotate .ic-stage.is-drag {
   cursor: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%2726%27%20height%3D%2726%27%20viewBox%3D%270%200%2026%2026%27%3E%3Cg%20fill%3D%27none%27%20stroke-linecap%3D%27round%27%3E%3Cpath%20d%3D%27M21%2013a8%208%200%201%201-4.1-7%27%20stroke%3D%27%23000%27%20stroke-width%3D%275%27%2F%3E%3Cpath%20d%3D%27M21%2013a8%208%200%201%201-4.1-7%27%20stroke%3D%27%23fff%27%20stroke-width%3D%272.4%27%2F%3E%3C%2Fg%3E%3Cpath%20d%3D%27M17.6%201.2%2017.6%208.4%2010.9%206.1z%27%20fill%3D%27%23fff%27%20stroke%3D%27%23000%27%20stroke-width%3D%271.4%27%20stroke-linejoin%3D%27round%27%2F%3E%3C%2Fsvg%3E") 13 13, crosshair;
@@ -33885,3 +33890,68 @@ body[data-pe-quick-state="empty"] .pe-quick-btn { color: var(--text-dim); border
   body.mobile-zoom .bottom-controls > .options-row,
   body.mobile-zoom .bottom-controls > .quick-params { display: none; }
 }
+
+/* ---- Appearance lock ----
+   The badge reuses the inset badge styles in teal so both stay distinguishable; app.js places it below the inset badge. */
+/* Fallback position below the inset badge (inset top 10px + ~25px badge + 6px gap); app.js sets
+   the real top from the elements above. */
+.reference-inset-badge.appearance-lock-badge { top: 42px; border-color: rgba(64, 196, 180, 0.55); }
+.reference-inset-badge.appearance-lock-badge:hover,
+.reference-inset-badge.appearance-lock-badge:focus-within { border-color: rgba(64, 196, 180, 0.9); }
+.appearance-lock-badge button:hover { background: rgba(64, 196, 180, 0.18); }
+.appearance-lock-badge .reference-inset-badge-mark {
+  border-color: #5fd4c4; border-radius: 50%; background: radial-gradient(circle, #5fd4c4 0 40%, transparent 42%);
+}
+.appearance-lock-badge-tag {
+  flex: none; display: flex; align-items: center; padding: 0 5px; white-space: nowrap;
+  font-family: var(--font-mono); font-size: 10px; color: #9fe6dc;
+  border-left: 1px solid rgba(255, 255, 255, 0.09);
+}
+/* Paused: the inset or an inpaint session owns the characters. The lock is still set, so the badge stays. */
+.appearance-lock-badge.is-paused { border-style: dashed; }
+.appearance-lock-badge.is-paused .reference-inset-badge-mark { background: none; }
+.appearance-lock-badge.is-paused .appearance-lock-badge-tag { color: var(--text-dim); }
+
+/* P.Eng preprocessing rows forced on by the appearance lock */
+.pe-opt-row.is-lock-forced { cursor: default; }
+.pe-opt-row.is-lock-forced .pe-opt-label { color: #9fe6dc; }
+.pe-opt-hint.pe-opt-lock { color: #5fd4c4; }
+
+/* Lock dialog */
+.alock-overlay .alock-dialog {
+  display: flex; flex-direction: column; gap: 12px;
+  width: min(640px, 94vw); max-height: min(86vh, 820px); padding: 20px 22px;
+}
+.alock-head .app-confirm-title { margin-bottom: 4px; }
+.alock-source { color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+.alock-body { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 4px; }
+.alock-group { display: flex; flex-direction: column; gap: 6px; }
+.alock-group.is-disabled .alock-chips { opacity: 0.45; }
+.alock-group-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.alock-group-name { color: var(--text-primary); font-size: 12px; font-weight: 700; }
+.alock-group-note { color: var(--text-dim); font-size: 11px; }
+.alock-group-all {
+  border: 1px solid var(--border-dim); border-radius: 6px; background: transparent;
+  color: var(--text-muted); font-size: 10.5px; padding: 1px 7px; cursor: pointer;
+}
+.alock-group-all:hover { color: var(--text-primary); border-color: var(--border-glow); }
+.alock-clothes-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.alock-clothes-toggle input { accent-color: #40c4b4; width: 14px; height: 14px; cursor: pointer; }
+.alock-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.alock-chip {
+  border: 1px solid var(--border-dim); border-radius: 999px; background: rgba(255, 255, 255, 0.03);
+  color: var(--text-muted); font-family: var(--font-editor); font-size: 12px; line-height: 18px;
+  padding: 2px 10px; cursor: pointer; text-decoration: line-through; text-decoration-color: rgba(255, 255, 255, 0.25);
+}
+.alock-chip.is-on {
+  border-color: rgba(64, 196, 180, 0.7); background: rgba(64, 196, 180, 0.16); color: #e6fbf8; text-decoration: none;
+}
+.alock-chip:hover:not(:disabled) { border-color: rgba(64, 196, 180, 0.9); }
+.alock-chip:focus-visible { outline: 2px solid var(--accent-glow); outline-offset: 1px; }
+.alock-chip:disabled { cursor: default; }
+.alock-others { color: var(--text-dim); font-size: 11px; }
+.alock-preview-label { color: var(--text-muted); font-size: 11px; font-weight: 700; }
+.alock-preview { width: 100%; min-height: 64px; resize: vertical; box-sizing: border-box; }
+.alock-rules { margin: 0; padding-left: 18px; color: var(--text-muted); font-size: 11.5px; line-height: 1.6; }
+.alock-rules b { color: #9fe6dc; font-weight: 700; }
+.alock-actions { grid-column: auto; margin-top: 0; }

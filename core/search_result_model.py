@@ -977,6 +977,68 @@ class SearchResultModel:
         self._mark_bucket_data_changed()
         return popped_row
 
+    # Draws before pop_random_row_with_tag falls back to a full scan. Even if only 2% of rows
+    # carry the tag, 256 draws miss with probability 0.98**256 < 1%.
+    TAG_SAMPLE_ATTEMPTS = 256
+
+    @_pool_locked
+    def pop_random_row_with_tag(
+        self,
+        active_ratings: set = None,
+        tag: str = "",
+    ) -> Optional[pd.Series]:
+        """Pop a random row whose ``general`` column contains ``tag`` as a whole tag.
+
+        Rejection sampling: draw rows without consuming them and keep the first match. Common
+        tags such as ``solo`` match most rows, so this usually costs one or two draws instead of
+        the full scan done by ``pop_random_row_matching_tags`` (~0.3 s per pick on 300k rows).
+        Falls back to that exact scan when sampling keeps missing, so rare tags still work.
+        """
+        if self.is_empty():
+            return None
+        wanted = str(tag or "").strip().lower()
+        # Call the undecorated variants below: going through the decorator again would
+        # count one consumption twice for the event-compress bookkeeping.
+        if not wanted:
+            return SearchResultModel.pop_random_row.__wrapped__(self, active_ratings)
+        self._ensure_bucketized()
+        active_rating_keys = self._active_rating_keys(active_ratings)
+        weighted: list[tuple[_SearchResultBucket, int]] = []
+        total = 0
+        for bucket_id in self._bucket_order:
+            bucket = self._buckets.get(bucket_id)
+            if bucket is None or bucket.is_empty() or "general" not in bucket.df.columns:
+                continue
+            weight = bucket.get_filtered_count(active_rating_keys)
+            if weight > 0:
+                total += weight
+                weighted.append((bucket, total))
+        if total <= 0:
+            return None
+
+        for _ in range(self.TAG_SAMPLE_ATTEMPTS):
+            target = random.randrange(total)
+            bucket = next(b for b, cumulative in weighted if target < cumulative)
+            index = bucket.probe_random_index(active_rating_keys)
+            if index is None:
+                continue
+            general = bucket.df.at[index, "general"]
+            if not isinstance(general, str):
+                continue
+            if wanted not in {part.strip().lower() for part in general.split(",")}:
+                continue
+            popped_row = bucket.pop_row_at_index(index)
+            if popped_row is None:
+                continue
+            if self._rating_counts_cache is not None and "rating" in popped_row:
+                rating = _normalize_rating(popped_row.get("rating"))
+                if rating in self._rating_counts_cache:
+                    self._rating_counts_cache[rating] = max(0, self._rating_counts_cache[rating] - 1)
+            self._mark_bucket_data_changed()
+            return popped_row
+        return SearchResultModel.pop_random_row_matching_tags.__wrapped__(
+            self, active_ratings, include_tags=(wanted,))
+
     def count_rows_matching_tags(
         self,
         active_ratings: set = None,

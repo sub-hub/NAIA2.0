@@ -3464,7 +3464,7 @@ export function createCharacterQuickPanel({
       //    옆의 `활성화` 를 덮는다(실측: 버튼 오른쪽 끝 145 vs 배지 161).
       // `virtual_label` = 어느 쪽의 가상인가(인셋 - 2026-10-18). 없으면 인페인트 세션이다.
       + (lastState && lastState.virtual
-        ? `<span class="cq-virtual">가상${lastState.virtual_label ? ` · ${escHtml(lastState.virtual_label)}` : ''}</span>`
+        ? `<span class="cq-virtual" title="가상${lastState.virtual_label ? ` · ${escHtml(lastState.virtual_label)}` : ''}">가상${lastState.virtual_label ? ` · ${escHtml(lastState.virtual_label)}` : ''}</span>`
         : '')
       + `<label class="cq-enable"><input type="checkbox" data-cq-enable="1"`
       + `${enabled ? ' checked' : ''}><span>활성화</span></label>`
@@ -3595,5 +3595,12 @@ export function createCharacterQuickPanel({
     openPoolWindow: () => openPoolWindow(),
   };
 
-  return {render, setVisible, isOpen: () => open, noteRandom, noteCharacterResult, noteCharacterError, characterActions};
+  /** Expand or collapse the panel (used by the appearance lock badge). */
+  function setOpen(value) {
+    if (open === !!value) return;
+    open = !!value;
+    render(lastState, true);
+  }
+
+  return {render, setVisible, isOpen: () => open, setOpen, noteRandom, noteCharacterResult, noteCharacterError, characterActions};
 }

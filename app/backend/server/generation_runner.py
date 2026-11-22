@@ -37,6 +37,8 @@ from core.event_stream_vibe import (
     SEQUENCE_VIBE_STRENGTH,
     halve_floor_strength,
 )
+from core.appearance_lock import APPEARANCE_LOCK_MARKER
+from core.appearance_lock import LIVE_REFETCH_KEYS as APPEARANCE_LOCK_REFETCH_KEYS
 from core.headless_image_module_param_service import (
     CHARACTER_REFERENCE_LIVE_REFETCH_KEYS,
     REFERENCE_INSET_LIVE_REFETCH_KEYS,
@@ -1417,6 +1419,10 @@ async def _maybe_continue_auto_generation(
     if overrides.get(REFERENCE_INSET_PIN_MARKER):
         for key in REFERENCE_INSET_LIVE_REFETCH_KEYS:
             overrides.pop(key, None)
+    # Same for the appearance lock's C1: a baked copy would keep the old look after an edit or unlock.
+    if overrides.get(APPEARANCE_LOCK_MARKER):
+        for key in APPEARANCE_LOCK_REFETCH_KEYS:
+            overrides.pop(key, None)
     # PARAMS 패널 값(라이브 remote_params)도 char-ref/vibe 와 동일하게 매 반복 라이브 재조회되게
     # overrides 에서 제거한다 — Auto Gen 도중 PARAMS(특히 ComfyUI/ANIMA) 변경 미반영 버그 수정.
     _drop_live_param_overrides(overrides, getattr(context, "remote_params", {}))
@@ -1848,6 +1854,8 @@ def _auto_generation_overrides(params: dict[str, Any]) -> dict[str, Any]:
             # 인셋 마커가 유실되면 continuation의 인셋 키 pop 가드가 영영 발동하지
             # 않아 baked 캔버스(type/image_bytes)가 다음 반복에 박제된다.
             REFERENCE_INSET_PIN_MARKER,
+            # Keep the appearance lock marker so the continuation can drop its baked C1.
+            APPEARANCE_LOCK_MARKER,
         }:
             continue
         overrides[key] = value

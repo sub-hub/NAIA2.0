@@ -15,7 +15,7 @@ from typing import Any
 
 import pandas as pd
 
-from core.auto_generation_flags import apply_interactive_generation_gate, is_special_request
+from core.auto_generation_flags import EXPLICIT_CHARACTER_KEYS, apply_interactive_generation_gate, is_special_request
 from core.generation_access_policy import access_policy, generation_dispatch, generation_operation
 from core.event_stream_vibe import (
     EVENT_STREAM_VIBE_MARKER_KEY,
@@ -1317,12 +1317,7 @@ class HeadlessGenerationService:
         return max(0, priority)
 
     # 요청이 캐릭터를 직접 정한 경우 - 이 요청은 메인 슬롯을 읽지 않는다(api_service 의 캐릭터 출처 분기와 같은 목록).
-    _EXPLICIT_CHARACTER_KEYS = (
-        "_session_pool_character", "_session_pool_characters", "_temporary_character",
-        "sketchbook_character_prompts", "characters", "character_asset_request",
-        "_skip_character_late_binding", "_reference_inset_skip_characters",
-        "_inpaint_session_characters",
-    )
+    _EXPLICIT_CHARACTER_KEYS = EXPLICIT_CHARACTER_KEYS
 
     def _capture_queued_characters(self, params: dict[str, Any], api_mode: str,
                                    shared_capture: dict | None = None, *, share_roll: bool = False) -> None:

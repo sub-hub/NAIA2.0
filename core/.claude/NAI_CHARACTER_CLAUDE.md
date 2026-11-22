@@ -98,6 +98,29 @@ HeadlessSettings 는 `NAICharacterData` 를 거치지 않고 정규화 리스트
 > 새 모듈은 **자기 경로에서 5를 막아야 한다.** 큐를 타면 예외로 알게 되지만, 직접
 > 생성 경로는 아무 말 없이 잘린다. 프론트도 `MAX_NAI_CHARACTERS = 5` 로 맞춰 뒀다.
 
+### Replacing C1 for a whole session (bypass modes)
+
+Some features send their own characters instead of the character module's slots without
+touching the module, so turning them off brings the real slots back. All of them put the
+characters into `sketchbook_character_prompts`, which `api_service` reads before any other
+source.
+
+| Mode | Injected by | Precedence |
+|---|---|---|
+| Inpaint session virtual characters | inpaint session params (`_inpaint_session_characters`) | 1 |
+| Reference inset virtual characters | `HeadlessImageModuleParamService._apply_reference_inset_pin` | 2 |
+| Appearance lock (`core/appearance_lock.py`) | `HeadlessImageModuleParamService._apply_appearance_lock` | 3 |
+
+Rules for a new bypass:
+
+- Apply it to plain generations only and skip any request that already chose its characters:
+  `core.auto_generation_flags.EXPLICIT_CHARACTER_KEYS` is the shared list.
+- Mark the params (e.g. `_appearance_lock`) and keep the marker in
+  `generation_runner._auto_generation_overrides`, so Auto Generate drops the baked characters
+  and reads the live state for the next image.
+- Show it in the quick panel as a virtual character (`virtual_label`) and route its edits back
+  to the bypass, as `app.js` does for the inset and the appearance lock.
+
 ---
 
 ## 3. Character Reference
@@ -245,5 +268,6 @@ REFERENCE_INSET_HOOK_INFO = {
 | `core/headless_character_reference_service.py` | CR 정본 — `active_params()` / `image_data()` |
 | `core/headless_character_asset_service.py` | 요청 단위 CR 늦은 바인딩 · 벤치 모드 |
 | `core/reference_inset_service.py` | 프롬프트 인셋 트릭 |
+| `core/appearance_lock.py` | Appearance lock: locked look as C1, row stripping, solo-only row picks |
 | `core/nai_model_contract.py` | `supports_character_reference` · `skip_cfg_above_sigma` |
 | `app/web/remote/js/features/interactivePanel.mjs` | 캐릭터별 Reference 가 비활성인 이유 |

@@ -332,6 +332,10 @@ def register_headless_routes(
         clients=clients,
         broadcast_json=broadcast_json,
     )
+    # Appearance lock (result context menu): send a locked look as C1 and strip it from random rows.
+    from app.backend.server.appearance_lock_routes import register_appearance_lock_routes
+    register_appearance_lock_routes(
+        app, context, run_in_thread=run_in_thread, clients=clients, broadcast_json=broadcast_json)
     from app.backend.server.agent_discovery_routes import register_agent_discovery_routes
     register_agent_discovery_routes(app, context, run_in_thread=run_in_thread)
     register_websocket_session(

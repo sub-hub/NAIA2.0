@@ -114,6 +114,37 @@ class HeadlessImageModuleParamService:
         # 인셋 핀은 마지막에 - type=inpaint 주입이 위 스트림 vibe의 plain 판정을
         # 건드리지 않도록(마커 화이트리스트가 있지만 순서로도 안전하게).
         self._apply_reference_inset_pin(params)
+        # After the inset pin: when the inset is active it owns the characters.
+        self._apply_appearance_lock(params, api_mode)
+
+    # ------------------------------------ appearance lock (C1 bypass)
+    def _apply_appearance_lock(self, params: dict[str, Any], api_mode: str) -> None:
+        """Send the locked appearance instead of the character module's C1.
+
+        Applies to plain generations only, using the same gate as the inset pin. Requests with
+        image input, special requests, sequence prompts and requests that already carry their own
+        characters (inset, inpaint session, session pool) are left untouched.
+        """
+        from core import appearance_lock
+        from core.auto_generation_flags import EXPLICIT_CHARACTER_KEYS, REFERENCE_INSET_PIN_MARKER
+
+        if params.get("type") or params.get("image_bytes") or params.get(REFERENCE_INSET_PIN_MARKER):
+            return
+        if is_special_request(params, getattr(self.context, "_coerce_bool", None)):
+            return
+        # Requests that choose their own characters (Interactive, session pool, saved params,
+        # inset, inpaint session) keep them.
+        if any(params.get(key) for key in EXPLICIT_CHARACTER_KEYS):
+            return
+        try:
+            from core.sequence_parser import SequenceParser
+
+            raw = params.get("_raw_input")
+            if isinstance(raw, str) and raw.strip() and SequenceParser.is_sequence_prompt(raw):
+                return
+        except Exception:      # noqa: BLE001 - a failed check must not block generation
+            pass
+        params.update(appearance_lock.generation_params(self.context, api_mode))
 
     # ------------------------------------ 레퍼런스 인셋 핀 (C1 + 레퍼런스 인셋)
     def _apply_reference_inset_pin(self, params: dict[str, Any]) -> None:

@@ -270,6 +270,19 @@ export function createResultImageActions({
     }
   }
 
+  /** Base prompt and character prompts saved in the image's metadata. The appearance lock
+   *  re-classifies them when the random row is no longer in memory. */
+  async function readCharacterSourceFromContext(context = {}) {
+    const data = await loadContextMetadataPayload(context);
+    const characters = findMetadataActionValue(data, ['characters']);
+    return {
+      prompt: String(buildMetadataActionPayload(data, context).prompt || '').trim(),
+      characters: Array.isArray(characters)
+        ? characters.map(entry => String((entry && typeof entry === 'object' ? entry.prompt ?? entry.char_caption : entry) || ''))
+        : [],
+    };
+  }
+
   async function restoreSettingsFromContext(context = {}) {
     try {
       const data = await loadContextMetadataPayload(context);
@@ -923,6 +936,7 @@ export function createResultImageActions({
     insertExternalToHistory,
     requestMetadataImageAction,
     loadPromptFromContext,
+    readCharacterSourceFromContext,
     restoreSettingsFromContext,
     rerollPromptFromContext,
     queueResultFromContext,

@@ -44,6 +44,16 @@ SPECIAL_REQUEST_TYPES = {"img2img", "inpaint", "outpaint", "auto_outpainting"}
 # 핀 상태에서 Auto Gen 연쇄가 조용히 멈추고 Automation 카운트에서 빠진다.
 REFERENCE_INSET_PIN_MARKER = "_reference_inset_pin"
 
+# Request params that mean "this request chose its own NAI characters", so the main character
+# slots (and bypasses such as the appearance lock) must not be applied. Mirrors the character
+# sources api_service checks before falling back to the character module.
+EXPLICIT_CHARACTER_KEYS = (
+    "_session_pool_character", "_session_pool_characters", "_temporary_character",
+    "sketchbook_character_prompts", "characters", "character_asset_request",
+    "_skip_character_late_binding", "_reference_inset_skip_characters",
+    "_inpaint_session_characters",
+)
+
 
 # ----------------------------------------------------------------------
 # Interactive 생성 게이트

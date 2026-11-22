@@ -22,6 +22,8 @@ const ACTION_DIRECTOR = 'nai_director_tool'; // NAI Director Tools (제거 가�
 const ACTION_SET_CHAR_REF = 'set_character_reference'; // 결과 이미지를 Character Reference 창에 할당
 const ACTION_SET_VIBE = 'set_vibe_transfer';           // 결과 이미지를 Vibe Transfer 창에 할당
 const ACTION_SAVE_CHAR_ASSET = 'save_character_asset'; // 결과 이미지를 캐릭터 에셋 라이브러리에 저장
+// Lock this image's character look as C1 and keep rolling pose, scene, rating and style (app.js onAppearanceLock). NAI only.
+const ACTION_APPEARANCE_LOCK = 'appearance_lock';
 // 이 그림으로 스냅샷을 담는다. 바로 담지 않고 **저장 창**(snapshotSaveWindow)을 거친다 - 카테고리와 담을
 // 항목을 거기서 정한다(사용자 지정 2026-10-04). app.js 가 `onSaveSnapshot` 으로 그 창을 연다.
 const ACTION_SAVE_SNAPSHOT = 'save_snapshot';
@@ -81,6 +83,7 @@ const MAIN_IMAGE_MENU = [
   ...MAIN_IMAGE_ACTIONS,
   {label: '프롬프트 불러오기', action: ACTION_LOAD_PROMPT, capability: 'load_prompt'},
   {label: '프롬프트 다시개봉', action: ACTION_REROLL_PROMPT, capability: 'reroll'},
+  {label: '이 외형으로 고정', action: ACTION_APPEARANCE_LOCK, capability: 'load_prompt', modes: ['NAI']},
   {label: 'WEBUI Enhance', action: ACTION_WEBUI_ENHANCE, capability: 'enhance', modes: ['WEBUI']},
   {type: 'separator'},
   {
@@ -146,6 +149,7 @@ const THUMBNAIL_MENU = [
   ...THUMBNAIL_IMAGE_ACTIONS,
   {label: '프롬프트 불러오기', action: ACTION_LOAD_PROMPT, capability: 'load_prompt'},
   {label: '프롬프트 다시개봉', action: ACTION_REROLL_PROMPT, capability: 'reroll'},
+  {label: '이 외형으로 고정', action: ACTION_APPEARANCE_LOCK, capability: 'load_prompt', modes: ['NAI']},
   {label: 'WEBUI Enhance', action: ACTION_WEBUI_ENHANCE, capability: 'enhance', modes: ['WEBUI']},
   {type: 'separator'},
   {
@@ -255,6 +259,7 @@ export function createResultContextMenu({
   onImageAction = null,
   onLoadPrompt = null,
   onRerollPrompt = null,
+  onAppearanceLock = null,
   onQueueResult = null,
   onRestoreSettings = null,
   onOpenLocation = null,
@@ -392,6 +397,9 @@ export function createResultContextMenu({
     }
     if (item.action === ACTION_REROLL_PROMPT) {
       return typeof onRerollPrompt === 'function';
+    }
+    if (item.action === ACTION_APPEARANCE_LOCK) {
+      return typeof onAppearanceLock === 'function';
     }
     if (item.action === ACTION_QUEUE_RESULT) {
       return typeof onQueueResult === 'function' && hasCapability(context, 'queue');
@@ -690,6 +698,8 @@ export function createResultContextMenu({
           onLoadPrompt(context);
         } else if (action === ACTION_REROLL_PROMPT) {
           onRerollPrompt(context);
+        } else if (action === ACTION_APPEARANCE_LOCK) {
+          onAppearanceLock(context);
         } else if (action === ACTION_QUEUE_RESULT) {
           onQueueResult(context, {
             position: button.dataset.queuePosition || 'back',
